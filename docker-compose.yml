@@ -15,19 +15,30 @@ services:
       - .env
 
   web:
-    build: .
+    build: ./backend
     container_name: geticket_app
     command: >
       sh -c "python manage.py migrate &&
              gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application"
     volumes:
-      - ./app:/app
+      - ./backend/app:/app
     ports:
       - "8000:8000"
     depends_on:
       - db
     env_file:
       - .env
+
+  frontend: 
+    build: ./frontend 
+    container_name: geticket_frontend 
+    volumes: 
+      - ./frontend:/app
+      - /app/node_modules 
+    ports: 
+      - "5173:5173"
+    depends_on: 
+      - web 
 
 volumes:
   postgres_data:
