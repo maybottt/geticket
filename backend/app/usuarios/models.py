@@ -20,7 +20,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     created_at      = models.DateTimeField(auto_now_add=True)
     updated_at      = models.DateTimeField(auto_now=True)
 
-    objects = UsuarioManager()
+    objects = UsuarioManager() 
 
     USERNAME_FIELD  = 'username'
     REQUIRED_FIELDS = ['email', 'nombres', 'apellidos']
