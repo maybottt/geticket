@@ -15,6 +15,11 @@ INSTALLED_APPS = [
         # Third party
     'rest_framework',
     'corsheaders',
+    #aplicaciones  
+    'usuarios',
+    'instituciones',
+    'operaciones',
+    'tickets',
 ]
 
 MIDDLEWARE = [
@@ -88,3 +93,4 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = []  # se sobreescribe en dev.py y prod.py
+AUTH_USER_MODEL = 'usuarios.Usuario'
