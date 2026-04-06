@@ -8,7 +8,7 @@ from .managers import UsuarioManager
 class Usuario(AbstractBaseUser, PermissionsMixin):
 
     email           = models.EmailField(max_length=255, unique=True)
-    username        = models.CharField(max_length=150, unique=True)
+    username        = models.CharField(max_length=50, unique=True)
     nombres         = models.CharField(max_length=100)
     apellidos       = models.CharField(max_length=100)
     nro_celular     = models.CharField(max_length=20, null=True, blank=True)
