@@ -19,6 +19,8 @@ from .serializers import (
     NotificacionSerializer,
 )
 from .utils import generar_codigo_ticket, registrar_historial
+from django.db.models import Count
+from django.db.models import Count, Q
 
 
 # ──────────────────────────────────────────
@@ -489,3 +491,50 @@ class NotificacionListView(APIView):
             destinatario=request.user
         ).order_by('-created_at')
         return Response(NotificacionSerializer(qs, many=True).data)
+
+
+
+# ──────────────────────────────────────────
+# Dashboard 
+# ──────────────────────────────────────────
+
+class DashboardStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        base_qs = Ticket.objects.all()
+
+        # Admin ve todo, agente solo sus tickets, cliente solo los suyos
+        if es_agente(request.user) and not es_admin(request.user):
+            base_qs = base_qs.filter(agente_asignado=request.user.agente)
+        elif es_cliente(request.user) and not es_admin(request.user):
+            base_qs = base_qs.filter(solicitud__cliente=request.user.cliente)
+
+        stats = base_qs.aggregate(
+            total=Count('id'),
+            en_proceso=Count('id',   filter=Q(estado='en_proceso')),
+            solucionado=Count('id',  filter=Q(estado='solucionado')),
+            cerrado=Count('id',      filter=Q(estado='cerrado')),
+            rechazado=Count('id',    filter=Q(estado='rechazado')),
+        )
+
+        # Resueltos = solucionado + cerrado
+        stats['resueltos'] = stats.pop('solucionado') + stats.pop('cerrado')
+
+        # Tickets recientes (últimos 10)
+        recientes = (
+            base_qs
+            .select_related(
+                'solicitud__cliente__usuario',
+                'solicitud__canal',
+                'solicitud__sistema',
+                'area',
+                'agente_asignado__usuario',
+            )
+            .order_by('-created_at')[:10]
+        )
+
+        return Response({
+            'stats':    stats,
+            'recientes': TicketSerializer(recientes, many=True).data,
+        })

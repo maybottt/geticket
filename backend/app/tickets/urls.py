@@ -5,7 +5,7 @@ from .views import (
     TicketAsignarView, TicketDesasignarView, TicketAsignarAutomaticoView,
     TicketEscalarView, TicketSolucionarView,
     TicketConfirmarView, TicketCerrarView, TicketRechazarView,
-    NotificacionListView,
+    NotificacionListView, DashboardStatsView, 
 )
 
 urlpatterns = [
@@ -28,4 +28,7 @@ urlpatterns = [
 
     # Notificaciones
     path('notificaciones/', NotificacionListView.as_view(), name='notificacion_list'),
+    # Dashboard 
+    path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard_stats'),
+
 ]

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/layout/AppLayout'
-import api from '../../api/axios'
+import { getDashboardStats } from '../../api/tickets'
 
 const ESTADO_CONFIG = {
   en_proceso:  { label: 'En proceso',  color: 'bg-orange-100 text-orange-700' },
@@ -11,9 +11,9 @@ const ESTADO_CONFIG = {
 }
 
 const PRIORIDAD_CONFIG = {
-  alta:  { label: 'Alta',  color: 'bg-red-100 text-red-600'     },
-  media: { label: 'Media', color: 'bg-yellow-100 text-yellow-700' },
-  baja:  { label: 'Baja',  color: 'bg-green-100 text-green-700'  },
+  alta:  { label: 'Alta',  color: 'bg-red-100 text-red-600'        },
+  media: { label: 'Media', color: 'bg-yellow-100 text-yellow-700'  },
+  baja:  { label: 'Baja',  color: 'bg-green-100 text-green-700'    },
 }
 
 function Badge({ config }) {
@@ -48,34 +48,30 @@ function getInitials(nombre) {
 
 const COLORS = ['bg-blue-600', 'bg-purple-600', 'bg-teal-600', 'bg-orange-500', 'bg-pink-600']
 function avatarColor(name = '') {
-  const i = name.charCodeAt(0) % COLORS.length
-  return COLORS[i]
+  return COLORS[name.charCodeAt(0) % COLORS.length]
 }
 
 export default function DashboardPage() {
-  const [tickets, setTickets] = useState([])
-  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const [stats,     setStats]     = useState({ total: 0, en_proceso: 0, resueltos: 0, rechazado: 0 })
+  const [recientes, setRecientes] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
 
   useEffect(() => {
-    api.get('/tickets/').then(({ data }) => {
-      setTickets(data)
-    }).finally(() => setLoading(false))
+    getDashboardStats()
+      .then(({ data }) => {
+        setStats(data.stats)
+        setRecientes(data.recientes)
+      })
+      .catch(() => setError('Error al cargar el dashboard.'))
+      .finally(() => setLoading(false))
   }, [])
-
-  const total      = tickets.length
-  const enProceso  = tickets.filter(t => t.estado === 'en_proceso').length
-  const resueltos  = tickets.filter(t => t.estado === 'solucionado' || t.estado === 'cerrado').length
-  const rechazados = tickets.filter(t => t.estado === 'rechazado').length
-
-  const recientes = [...tickets]
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    .slice(0, 10)
 
   return (
     <AppLayout>
       <div className="p-8">
-        {/* Header */}
+        {/* Breadcrumb */}
         <div className="flex items-center gap-3 text-gray-400 text-sm mb-6">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
             <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -86,31 +82,37 @@ export default function DashboardPage() {
 
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h1>
 
+        {error && (
+          <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            {error}
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           <StatCard
-            label="Total recibidos" value={total}
+            label="Total recibidos" value={stats.total}
             iconBg="bg-blue-50"
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" className="w-6 h-6"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>}
           />
           <StatCard
-            label="En proceso" value={enProceso}
+            label="En proceso" value={stats.en_proceso}
             iconBg="bg-orange-50"
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2" className="w-6 h-6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
           />
           <StatCard
-            label="Resueltos" value={resueltos}
+            label="Resueltos" value={stats.resueltos}
             iconBg="bg-green-50"
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" className="w-6 h-6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
           />
           <StatCard
-            label="Rechazados" value={rechazados}
+            label="Rechazados" value={stats.rechazado}
             iconBg="bg-red-50"
             icon={<svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="w-6 h-6"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>}
           />
         </div>
 
-        {/* Tabla tickets recientes */}
+        {/* Tabla */}
         <div className="bg-white rounded-2xl border border-gray-100">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="font-semibold text-gray-900">Tickets Recientes</h2>

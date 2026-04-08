@@ -14,3 +14,9 @@ export const getMe = () =>
 
 export const changePassword = (data) =>
   api.post('/auth/change-password/', data)
+
+export const registroCliente = (data) =>
+  api.post('/auth/registro/', data)
+
+export const getInstituciones = () =>
+  api.get('/instituciones/')

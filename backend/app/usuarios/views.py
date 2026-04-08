@@ -215,3 +215,72 @@ class ClienteDetailView(APIView):
         cliente.usuario.is_active = False
         cliente.usuario.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class RegistroClienteView(APIView):
+    permission_classes = []  # público, no requiere token
+
+    def post(self, request):
+        from instituciones.models import Institucion
+        from .serializers import ClienteCreateSerializer
+
+        # El cliente se registra con is_active=False
+        # El admin lo aprueba después cambiándolo a True
+        data = request.data.copy()
+
+        # Validaciones básicas
+        if not data.get('username'):
+            return Response({'detail': 'El username es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('email'):
+            return Response({'detail': 'El email es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('password'):
+            return Response({'detail': 'La contraseña es obligatoria.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('nombres'):
+            return Response({'detail': 'Los nombres son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('apellidos'):
+            return Response({'detail': 'Los apellidos son obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('id_institucion'):
+            return Response({'detail': 'La institución es obligatoria.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if Usuario.objects.filter(username=data.get('username')).exists():
+            return Response({'detail': 'Ya existe un usuario con ese username.'}, status=status.HTTP_400_BAD_REQUEST)
+        if Usuario.objects.filter(email=data.get('email')).exists():
+            return Response({'detail': 'Ya existe un usuario con ese email.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            institucion = Institucion.objects.get(pk=data.get('id_institucion'), estado='activo')
+        except Institucion.DoesNotExist:
+            return Response({'detail': 'Institución no encontrada.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            user = Usuario(
+                username      = data.get('username'),
+                email         = data.get('email'),
+                nombres       = data.get('nombres'),
+                apellidos     = data.get('apellidos'),
+                nro_celular   = data.get('nro_celular', ''),
+                user_telegram = data.get('user_telegram', ''),
+                ci            = data.get('ci') or None,
+                is_active     = False,  # espera aprobación
+            )
+            user.set_password(data.get('password'))
+            user.save()
+
+            Cliente.objects.create(
+                usuario        = user,
+                institucion    = institucion,
+                rol_institucion= data.get('rol_institucion') or None,
+            )
+
+        return Response(
+            {'detail': 'Registro exitoso. Tu cuenta está pendiente de aprobación por un administrador.'},
+            status=status.HTTP_201_CREATED
+        )
+
+class AprobarClienteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        cliente.usuario.is_active = True
+        cliente.usuario.save()
+        return Response({'detail': f'Cliente {cliente.usuario.username} aprobado correctamente.'})

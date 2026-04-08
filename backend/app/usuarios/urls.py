@@ -4,7 +4,7 @@ from .views import (
     LoginView, ElegirRolView, SwitchRolView,
     MeView, PasswordChangeView,
     AgenteListCreateView, AgenteDetailView,
-    ClienteListCreateView, ClienteDetailView,
+    ClienteListCreateView, ClienteDetailView, RegistroClienteView, 
 )
 
 urlpatterns = [
@@ -23,4 +23,9 @@ urlpatterns = [
     # Clientes
     path('clientes/',          ClienteListCreateView.as_view(), name='cliente_list_create'),
     path('clientes/<int:pk>/', ClienteDetailView.as_view(),    name='cliente_detail'),
+
+    # Público 
+    path('auth/registro/', RegistroClienteView.as_view(), name='registro_cliente'),
+
+    path('clientes/<int:pk>/aprobar/', AprobarClienteView.as_view(), name='cliente_aprobar'),
 ]
