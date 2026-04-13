@@ -5,6 +5,7 @@ from .views import (
     MeView, PasswordChangeView,
     AgenteListCreateView, AgenteDetailView,
     ClienteListCreateView, ClienteDetailView, RegistroClienteView, 
+    AprobarClienteView, 
 )
 
 urlpatterns = [

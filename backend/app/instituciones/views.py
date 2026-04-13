@@ -60,6 +60,12 @@ class InstitucionDetailView(APIView):
         institucion.sistemas.filter(estado='activo').update(estado='inactivo')
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+class InstitucionPublicaListView(APIView):
+    permission_classes = []  # público
+
+    def get(self, request):
+        qs = Institucion.objects.filter(estado='activo').values('id', 'nombre')
+        return Response(list(qs))
 
 # ──────────────────────────────────────────
 # Sistemas

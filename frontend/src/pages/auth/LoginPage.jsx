@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { login, elegirRol } from '../../api/auth'
+import { login, elegirRol, registroCliente} from '../../api/auth'
+import api from '../../api/axios'
 
 const ROL_CONFIG = {
   administrador: {
@@ -253,12 +254,19 @@ export default function LoginPage() {
 function RegisterForm() {
   const [form, setForm] = useState({
     nombres: '', apellidos: '', ci: '', nro_celular: '',
-    email: '', user_telegram: '', id_institucion: '', rol_institucion: '',
-    username: '', password: '',
+    email: '', user_telegram: '', id_institucion: '',
+    rol_institucion: '', username: '', password: '',
   })
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
-  const [success, setSuccess] = useState(false)
+  const [instituciones, setInstituciones] = useState([])
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [success, setSuccess]   = useState(false)
+
+  useEffect(() => {
+    api.get('/instituciones/publicas').then(({ data }) => {
+      setInstituciones(data)
+    }).catch(() => {})
+  }, [])
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value })
@@ -268,10 +276,16 @@ function RegisterForm() {
     setError('')
     setLoading(true)
     try {
-      // Endpoint de registro público — lo implementamos después
+      await registroCliente({
+        ...form,
+        id_institucion: parseInt(form.id_institucion),
+      })
       setSuccess(true)
     } catch (err) {
-      setError('Error al crear la cuenta.')
+      setError(
+        err.response?.data?.detail ||
+        'Error al crear la cuenta. Verifica los datos.'
+      )
     } finally {
       setLoading(false)
     }
@@ -285,8 +299,10 @@ function RegisterForm() {
             <polyline points="20 6 9 17 4 12"/>
           </svg>
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">¡Cuenta creada!</h3>
-        <p className="text-gray-500 text-sm">Un administrador activará tu cuenta pronto.</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">¡Solicitud enviada!</h3>
+        <p className="text-gray-500 text-sm">
+          Tu cuenta está pendiente de aprobación. Un administrador la activará pronto.
+        </p>
       </div>
     )
   }
@@ -328,10 +344,34 @@ function RegisterForm() {
           className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"/>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">Usuario de Telegram (opcional)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Usuario de Telegram <span className="text-gray-400 font-normal">(opcional)</span>
+        </label>
         <input name="user_telegram" value={form.user_telegram} onChange={handleChange}
           placeholder="@usuario"
           className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"/>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Institución</label>
+        <select name="id_institucion" value={form.id_institucion} onChange={handleChange} required
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+          <option value="">Seleccione institución...</option>
+          {instituciones.map(i => (
+            <option key={i.id} value={i.id}>{i.nombre}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          Rol en la institución <span className="text-gray-400 font-normal">(opcional)</span>
+        </label>
+        <select name="rol_institucion" value={form.rol_institucion} onChange={handleChange}
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+          <option value="">Seleccione un rol...</option>
+          <option value="medico">Médico</option>
+          <option value="cajero">Cajero</option>
+          <option value="almacenes">Almacenes</option>
+        </select>
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Usuario</label>
@@ -342,7 +382,7 @@ function RegisterForm() {
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Contraseña</label>
         <input name="password" type="password" value={form.password} onChange={handleChange} required
-          placeholder="••••••••"
+          placeholder="••••••••" minLength={8}
           className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"/>
       </div>
       {error && <p className="text-red-500 text-sm">{error}</p>}
