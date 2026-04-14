@@ -3,6 +3,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.generics import get_object_or_404
+from django.db import transaction
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.decorators import action
 
 from .models import Usuario, Agente, Cliente
 from .serializers import (
@@ -10,7 +13,7 @@ from .serializers import (
     UsuarioSerializer, UsuarioUpdateSerializer, PasswordChangeSerializer,
     AgenteSerializer, AgenteCreateSerializer,
     ClienteSerializer, ClienteCreateSerializer,
-    get_roles, get_token_para_rol,
+    get_roles, get_token_para_rol,UsuarioConRolesSerializer, 
 )
 
 
@@ -198,6 +201,17 @@ class ClienteDetailView(APIView):
     def get(self, request, pk):
         return Response(ClienteSerializer(self.get_object(pk)).data)
 
+    def post(self, request, pk):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        if cliente.estado == 'activo':
+            cliente.estado = 'inactivo'
+            msg = f'Cliente {cliente.usuario.username} desactivado.'
+        else:
+            cliente.estado = 'activo'
+            msg = f'Cliente {cliente.usuario.username} activado.'
+        cliente.save()
+        return Response({'detail': msg})
+
     def patch(self, request, pk):
         cliente = self.get_object(pk)
         serializer = UsuarioUpdateSerializer(
@@ -212,6 +226,8 @@ class ClienteDetailView(APIView):
 
     def delete(self, request, pk):
         cliente = self.get_object(pk)
+        cliente.estado = 'eliminado'
+        cliente.save()
         cliente.usuario.is_active = False
         cliente.usuario.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -276,6 +292,23 @@ class RegistroClienteView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+
+class ClienteEliminarView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        if cliente.estado == 'eliminado':
+            return Response(
+                {'detail': 'El cliente ya está eliminado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        cliente.estado = 'eliminado'
+        cliente.save()
+        cliente.usuario.is_active = False
+        cliente.usuario.save()
+        return Response({'detail': f'Cliente {cliente.usuario.username} marcado como eliminado.'})
+
 class AprobarClienteView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
@@ -284,3 +317,187 @@ class AprobarClienteView(APIView):
         cliente.usuario.is_active = True
         cliente.usuario.save()
         return Response({'detail': f'Cliente {cliente.usuario.username} aprobado correctamente.'})
+
+
+
+# ──────────────────────────────────────────
+# Registro público de usuario sin rol
+# ──────────────────────────────────────────
+class RegistroUsuarioPublicoView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+        serializer = RegistroUsuarioPublicoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        usuario = serializer.save()
+        return Response(
+            {
+                'detail': 'Usuario registrado exitosamente. Pendiente de aprobación.',
+                'id': usuario.id
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+# ──────────────────────────────────────────
+# Gestión de usuarios (admin)
+# ──────────────────────────────────────────
+class UsuarioListCreateView(ListCreateAPIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Usuario.objects.all()
+    serializer_class = UsuarioConRolesSerializer
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return RegistroUsuarioPublicoSerializer  # Reutilizamos el mismo para creación
+        return UsuarioConRolesSerializer
+
+    def perform_create(self, serializer):
+        # El usuario se crea inactivo por defecto
+        serializer.save(is_active=False)
+
+
+class UsuarioDetailView(RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Usuario.objects.all()
+    serializer_class = UsuarioConRolesSerializer
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UsuarioUpdateSerializer
+        return UsuarioConRolesSerializer
+
+
+class AprobarUsuarioView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        if usuario.is_active:
+            return Response(
+                {'detail': 'El usuario ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        usuario.is_active = True
+        usuario.save()
+        return Response({'detail': f'Usuario {usuario.username} aprobado.'})
+
+
+class AsignarRolAgenteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        if hasattr(usuario, 'agente'):
+            return Response(
+                {'detail': 'El usuario ya tiene perfil de agente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        agente = Agente.objects.create(usuario=usuario, estado='activo')
+        return Response(
+            {'detail': 'Perfil de agente creado.', 'id_agente': agente.id},
+            status=status.HTTP_201_CREATED
+        )
+
+
+class AsignarRolClienteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        if hasattr(usuario, 'cliente'):
+            return Response(
+                {'detail': 'El usuario ya tiene perfil de cliente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Se requiere institución
+        id_institucion = request.data.get('id_institucion')
+        rol = request.data.get('rol_institucion')
+        if not id_institucion:
+            return Response(
+                {'detail': 'Se requiere id_institucion.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from instituciones.models import Institucion
+        try:
+            institucion = Institucion.objects.get(pk=id_institucion, estado='activo')
+        except Institucion.DoesNotExist:
+            return Response(
+                {'detail': 'Institución no encontrada o inactiva.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with transaction.atomic():
+            cliente = Cliente.objects.create(
+                usuario=usuario,
+                institucion=institucion,
+                rol_institucion=rol
+            )
+        return Response(
+            {'detail': 'Perfil de cliente creado.', 'id_cliente': cliente.id},
+            status=status.HTTP_201_CREATED
+        )
+
+
+class RemoverRolAgenteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def delete(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        if not hasattr(usuario, 'agente'):
+            return Response(
+                {'detail': 'El usuario no tiene perfil de agente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        agente = usuario.agente
+        agente.estado = 'eliminado'
+        agente.save()
+        # Opcional: eliminar físicamente con agente.delete()
+        return Response({'detail': 'Perfil de agente desactivado.'})
+
+
+class RemoverRolClienteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def delete(self, request, pk):
+        usuario = get_object_or_404(Usuario, pk=pk)
+        if not hasattr(usuario, 'cliente'):
+            return Response(
+                {'detail': 'El usuario no tiene perfil de cliente.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        cliente = usuario.cliente
+        cliente.delete()  # Eliminación física, o podrías agregar campo estado
+        return Response({'detail': 'Perfil de cliente eliminado.'})
+
+class ClienteToggleActivoView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        if cliente.estado == 'activo':
+            cliente.estado = 'inactivo'
+            msg = f'Cliente {cliente.usuario.username} desactivado.'
+        else:
+            cliente.estado = 'activo'
+            msg = f'Cliente {cliente.usuario.username} activado.'
+        cliente.save()
+        return Response({'detail': msg})
+
+
+class ClienteEliminarView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        cliente = get_object_or_404(Cliente, pk=pk)
+        if cliente.estado == 'eliminado':
+            return Response(
+                {'detail': 'El cliente ya está eliminado.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        cliente.estado = 'eliminado'
+        cliente.save()
+        cliente.usuario.is_active = False
+        cliente.usuario.save()
+        return Response({'detail': f'Cliente {cliente.usuario.username} marcado como eliminado.'})

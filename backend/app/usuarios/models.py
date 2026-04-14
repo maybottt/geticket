@@ -71,6 +71,12 @@ class Cliente(models.Model):
         ('almacenes', 'Almacenes'),
     ]
 
+    ESTADO_CHOICES = [
+        ('activo',    'Activo'),
+        ('inactivo',  'Inactivo'),
+        ('eliminado', 'Eliminado'),
+    ]
+
     usuario         = models.OneToOneField(
         Usuario, on_delete=models.PROTECT,
         db_column='id_usuario', related_name='cliente'
@@ -81,6 +87,9 @@ class Cliente(models.Model):
     )
     rol_institucion = models.CharField(
         max_length=50, choices=ROL_CHOICES, null=True, blank=True
+    )
+    estado = models.CharField(
+        max_length=15, choices=ESTADO_CHOICES, default='activo'
     )
     created_at      = models.DateTimeField(auto_now_add=True)
     updated_at      = models.DateTimeField(auto_now=True)
