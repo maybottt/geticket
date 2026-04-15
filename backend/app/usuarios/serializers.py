@@ -8,21 +8,29 @@ from .models import Usuario, Agente, Cliente
 # Helpers
 # ──────────────────────────────────────────
 
-def get_roles(user):
-    """Devuelve la lista de roles que tiene el usuario."""
+def get_roles(user): #sin importar el estado
     roles = []
     if user.is_admin:
         roles.append('administrador')
-    if hasattr(user, 'agente') and user.agente.estado == 'activo':
+    if hasattr(user, 'agente'):
         roles.append('agente')
     if hasattr(user, 'cliente'):
         roles.append('cliente')
     return roles
 
+def get_roles_activos(user): #roles activos que tiene el usuario 
+    roles = []
+    if user.is_admin:
+        roles.append('administrador')
+    if hasattr(user, 'agente') and user.agente.estado == 'activo':
+        roles.append('agente')
+    if hasattr(user, 'cliente') and user.cliente.estado == 'activo':  
+        roles.append('cliente')
+    return roles
 
 def get_token_para_rol(user, rol):
     """Genera un RefreshToken con el rol_activo en el payload."""
-    roles_disponibles = get_roles(user)
+    roles_disponibles = get_roles_activos(user)
     if rol not in roles_disponibles:
         raise serializers.ValidationError(
             f'El usuario no tiene el rol "{rol}".'
@@ -52,7 +60,7 @@ class LoginSerializer(serializers.Serializer):
         if not user.is_active:
             raise serializers.ValidationError('Usuario inactivo.')
 
-        roles = get_roles(user)
+        roles = get_roles_activos(user)
         if not roles:
             raise serializers.ValidationError('El usuario no tiene ningún rol asignado.')
 
@@ -71,7 +79,7 @@ class ElegirRolSerializer(serializers.Serializer):
         except Usuario.DoesNotExist:
             raise serializers.ValidationError('Usuario no encontrado.')
 
-        roles = get_roles(user)
+        roles = get_roles_activos(user)
         if attrs['rol'] not in roles:
             raise serializers.ValidationError(
                 f'El usuario no tiene el rol "{attrs["rol"]}".'
@@ -86,7 +94,7 @@ class SwitchRolSerializer(serializers.Serializer):
 
     def validate_rol(self, value):
         user  = self.context['request'].user
-        roles = get_roles(user)
+        roles = get_roles_activos(user)
         if value not in roles:
             raise serializers.ValidationError(
                 f'No tienes el rol "{value}".'
@@ -173,7 +181,7 @@ class UsuarioConRolesSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
     def get_roles(self, obj):
-        return get_roles(obj)
+        return get_roles_activos(obj)
 
 
 # ──────────────────────────────────────────
@@ -198,7 +206,7 @@ class AgenteCreateSerializer(serializers.Serializer):
     nro_celular   = serializers.CharField(max_length=20,  required=False, allow_blank=True)
     user_telegram = serializers.CharField(max_length=50,  required=False, allow_blank=True)
     ci            = serializers.CharField(max_length=20,  required=False, allow_blank=True)
-    estado        = serializers.ChoiceField(choices=['activo', 'inactivo'], default='activo')
+    estado        = serializers.ChoiceField(choices=['activo', 'inactivo'], default='inactivo')
 
     def validate_email(self, value):
         if Usuario.objects.filter(email=value).exists():

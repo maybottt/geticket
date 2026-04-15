@@ -15,7 +15,7 @@ from .serializers import (
     ClienteSerializer, ClienteCreateSerializer,
     get_roles, get_token_para_rol,UsuarioConRolesSerializer, 
 )
-
+from instituciones.models import Institucion
 
 # ──────────────────────────────────────────
 # Auth
@@ -236,9 +236,10 @@ class RegistroClienteView(APIView):
     permission_classes = []  # público, no requiere token
 
     def post(self, request):
-        from instituciones.models import Institucion
-        from .serializers import ClienteCreateSerializer
-
+        # Si está autenticado, solicita rol cliente
+        if request.user.is_authenticated:
+            return self._solicitar_rol_cliente(request.user, request.data)
+        
         # El cliente se registra con is_active=False
         # El admin lo aprueba después cambiándolo a True
         data = request.data.copy()
@@ -291,6 +292,39 @@ class RegistroClienteView(APIView):
             {'detail': 'Registro exitoso. Tu cuenta está pendiente de aprobación por un administrador.'},
             status=status.HTTP_201_CREATED
         )
+    def _solicitar_rol_cliente(self, usuario, data):
+        id_institucion = data.get('id_institucion')
+        rol_institucion = data.get('rol_institucion')
+        
+        if not id_institucion:
+            return Response({'detail': 'Se requiere id_institucion.'}, status=400)
+        
+        from instituciones.models import Institucion
+        try:
+            institucion = Institucion.objects.get(pk=id_institucion, estado='activo')
+        except Institucion.DoesNotExist:
+            return Response({'detail': 'Institución no encontrada.'}, status=400)
+        
+        if hasattr(usuario, 'cliente'):
+            cliente = usuario.cliente
+            if cliente.estado == 'activo':
+                return Response({'detail': 'Ya eres cliente activo.'}, status=400)
+            elif cliente.estado == 'inactivo':
+                return Response({'detail': 'Solicitud pendiente.'}, status=400)
+            elif cliente.estado == 'eliminado':
+                cliente.estado = 'inactivo'
+                cliente.institucion = institucion
+                cliente.rol_institucion = rol_institucion
+                cliente.save()
+                return Response({'detail': 'Solicitud reactivada.'}, status=200)
+        else:
+            Cliente.objects.create(
+                usuario=usuario,
+                institucion=institucion,
+                rol_institucion=rol_institucion,
+                estado='inactivo'
+            )
+            return Response({'detail': 'Solicitud enviada.'}, status=201)
 
 
 class ClienteEliminarView(APIView):
@@ -316,6 +350,8 @@ class AprobarClienteView(APIView):
         cliente = get_object_or_404(Cliente, pk=pk)
         cliente.usuario.is_active = True
         cliente.usuario.save()
+        cliente.estado = 'activo'
+        cliente.save()
         return Response({'detail': f'Cliente {cliente.usuario.username} aprobado correctamente.'})
 
 
@@ -501,3 +537,110 @@ class ClienteEliminarView(APIView):
         cliente.usuario.is_active = False
         cliente.usuario.save()
         return Response({'detail': f'Cliente {cliente.usuario.username} marcado como eliminado.'})
+
+
+
+# ──────────────────────────────────────────
+# Registro público de Agente
+# ──────────────────────────────────────────
+class RegistroAgenteView(APIView):
+    permission_classes = []
+
+    def post(self, request):
+
+        if request.user.is_authenticated:
+            return self._solicitar_rol_agente(request.user)  
+
+        data = request.data.copy()
+        data['estado'] = 'inactivo'   
+
+        serializer = AgenteCreateSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            agente = serializer.save()  
+            agente.usuario.is_active = False
+            agente.usuario.save()
+
+        return Response(
+            {
+                'detail': 'Registro de agente exitoso. Tu cuenta está pendiente de aprobación por el administrador.'},
+            status=status.HTTP_201_CREATED
+        )
+
+    def _solicitar_rol_agente(self, usuario):
+        # Verificar si ya tiene perfil de agente
+        if hasattr(usuario, 'agente'):
+            agente = usuario.agente
+            if agente.estado == 'activo':
+                return Response(
+                    {'detail': 'Ya eres agente activo.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif agente.estado == 'inactivo':
+                return Response(
+                    {'detail': 'Ya tienes una solicitud pendiente de aprobación.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif agente.estado == 'eliminado':
+                # Reactivar solicitud
+                agente.estado = 'inactivo'
+                agente.save()
+                return Response({
+                    'detail': 'Tu solicitud para ser agente ha sido reactivada. Espera aprobación.'
+                }, status=status.HTTP_200_OK)
+        else:
+            # Crear nuevo agente inactivo
+            Agente.objects.create(usuario=usuario, estado='inactivo')
+            return Response({
+                'detail': 'Solicitud para ser agente enviada. Espera aprobación del administrador.'
+            }, status=status.HTTP_201_CREATED)
+
+
+# ──────────────────────────────────────────
+# Gestión de estado de agentes (admin)
+# ──────────────────────────────────────────
+
+class AgenteAprobarView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        # Buscar primero como Agente.id, luego como usuario.id
+        try:
+            agente = Agente.objects.get(pk=pk)
+        except Agente.DoesNotExist:
+            try:
+                agente = Agente.objects.get(usuario_id=pk)
+            except Agente.DoesNotExist:
+                raise get_object_or_404(Agente, pk=pk)  # lanza 404 original
+
+        if agente.usuario.is_active:
+            return Response(
+                {'detail': 'El usuario ya está activo.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Activar usuario
+        agente.usuario.is_active = True
+        agente.usuario.save()
+
+        # Activar perfil de agente (cambiar estado a 'activo')
+        if agente.estado != 'activo':
+            agente.estado = 'activo'
+            agente.save()
+
+        return Response({'detail': f'Agente {agente.usuario.username} aprobado correctamente.'})
+
+class AgenteToggleActivoView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        agente = get_object_or_404(Agente, pk=pk)
+        if agente.estado == 'activo':
+            agente.estado = 'inactivo'
+            msg = f'Agente {agente.usuario.username} desactivado.'
+        else:
+            agente.estado = 'activo'
+            msg = f'Agente {agente.usuario.username} activado.'
+        agente.save()
+        return Response({'detail': msg})
