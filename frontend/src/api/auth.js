@@ -16,7 +16,7 @@ export const changePassword = (data) =>
   api.post('/auth/change-password/', data)
 
 export const registroCliente = (data) =>
-  api.post('/auth/registro/', data)
+  api.post('/auth/registro/cliente/', data)
 
 export const getInstituciones = () =>
   api.get('/instituciones/')
