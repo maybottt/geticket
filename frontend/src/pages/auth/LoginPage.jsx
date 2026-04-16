@@ -365,13 +365,9 @@ function RegisterForm() {
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           Rol en la institución <span className="text-gray-400 font-normal">(opcional)</span>
         </label>
-        <select name="rol_institucion" value={form.rol_institucion} onChange={handleChange}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-          <option value="">Seleccione un rol...</option>
-          <option value="medico">Médico</option>
-          <option value="cajero">Cajero</option>
-          <option value="almacenes">Almacenes</option>
-        </select>
+        <input name="rol_institucion" value={form.rol_institucion} onChange={handleChange}
+          placeholder="Ingrese su rol en su trabajo "
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"/>
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">Usuario</label>

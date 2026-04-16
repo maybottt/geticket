@@ -25,3 +25,41 @@ VALUES('', '', '', NOW(), NOW(), 0);
 NOMBRES: ERP-GeCOIN, HIS-GeHOMED, LIS-GeLIS, GeDOCTOR, SYSMAN pos, FACSIN 
 VERSIONES: 15.20.01.51 y similares 
 ESTADO: activo o innactivo o eliminado 
+
+
+SELECT id, nombre, descripcion, direccion, telefono, email, estado, created_at, updated_at
+FROM public.institucion;
+
+SELECT id, "password", is_superuser, email, username, nombres, apellidos, nro_celular, user_telegram, ci, is_admin, is_active, last_login, created_at, updated_at
+FROM public.usuario; 
+
+select * from public.cliente;
+select * from public.agente;
+select * from public.ticket;
+
+INSERT INTO public.canal_entrada
+(nombre, descripcion, estado, created_at)
+VALUES('WhatsApp', 'linea de soporte hospitales', 'activo', now());
+
+INSERT INTO public.sistema
+(nombre, "version", estado, created_at, updated_at, id_institucion)
+VALUES('GeHOMED', '15.20.01.51', 'activo', now(), now(), 6);
+
+INSERT INTO public.solicitud
+(descripcion, received_at, created_at, id_canal, id_cliente, id_sistema)
+VALUES('No ingresa a GeHOMED', NOW(), NOW(), 1, 2, 1);
+
+INSERT INTO public.area
+(nombre, estado, created_at, updated_at)
+VALUES('SOPORTE', 'activo', now(), now());
+
+INSERT INTO public.ticket
+(codigo_ticket, estado, prioridad, motivo_escalamiento, fecha_primera_respuesta, fecha_solucionado, fecha_cierre, chatbot_enviado, chatbot_resolvio, horas_limite_confirmacion, comentario_solucion, created_at, updated_at, id_agente_asignado, id_agente_escalado, id_area, id_solicitud)
+VALUES('GT-001', 'activo', 'alta', null, '2026-04-15 10:11:06.347 -0400', '2026-04-15 11:11:06.347 -0400', '2026-04-15 12:11:06.347 -0400', false, false, 5, 'Se realizo una actualizacion. ', now(), now(), 2, null, 1, 1);
+
+
+
+
+
+
+
