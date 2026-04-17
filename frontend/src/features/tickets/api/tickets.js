@@ -1,4 +1,4 @@
-import api from './axios'
+import api from '../../../shared/lib/axios'
 
 export const getDashboardStats = () => api.get('/dashboard/stats/')
 export const getTickets        = (params) => api.get('/tickets/', { params })

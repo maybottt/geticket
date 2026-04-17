@@ -1,4 +1,4 @@
-import Sidebar from './Sidebar'
+import Sidebar from "@shared/components/layout/Sidebar";
 
 export default function AppLayout({ children }) {
   return (

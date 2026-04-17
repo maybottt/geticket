@@ -1,5 +1,5 @@
+import { useAuth } from '@features/auth/context/AuthContext'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
 
 const NAV_ADMIN = [
   { to: '/dashboard',     label: 'Dashboard',      icon: <IconDashboard /> },

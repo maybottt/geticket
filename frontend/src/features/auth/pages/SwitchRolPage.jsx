@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
-import { switchRol } from '../../api/auth'
+import { useAuth } from '../context/AuthContext'
+import { switchRol } from '../api/auth'
 import { useState } from 'react'
 
 export default function SwitchRolPage() {

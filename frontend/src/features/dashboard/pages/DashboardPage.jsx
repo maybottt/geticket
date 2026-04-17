@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import AppLayout from '../../components/layout/AppLayout'
-import { getDashboardStats } from '../../api/tickets'
+import { getDashboardStats } from "@features/tickets/api/tickets";
+import AppLayout from "@shared/components/layout/AppLayout"; 
 
 const ESTADO_CONFIG = {
   en_proceso:  { label: 'En proceso',  color: 'bg-orange-100 text-orange-700' },

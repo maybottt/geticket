@@ -1,11 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
-import PrivateRoute from './routes/PrivateRoute'
-import AppLayout from './components/layout/AppLayout'
-import LoginPage from './pages/auth/LoginPage'
-import SwitchRolPage from './pages/auth/SwitchRolPage'
-import DashboardPage from './pages/dashboard/DashboardPage'
-import TicketDetailPage from './pages/tickets/TicketDetailPage'
+import { AuthProvider } from '@features/auth/context/AuthContext'
+import PrivateRoute from '@features/auth/routes/PrivateRoute'
+import LoginPage from '@features/auth/pages/LoginPage'
+import SwitchRolPage from '@features/auth/pages/SwitchRolPage'
+import DashboardPage from '@features/dashboard/pages/DashboardPage'
+import TicketDetailPage from '@features/tickets/pages/TicketDetailPage'
 
 export default function App() {
   return (

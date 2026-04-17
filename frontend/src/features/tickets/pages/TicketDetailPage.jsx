@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import AppLayout from '../../components/layout/AppLayout'
-import api from '../../api/axios'
+import AppLayout from "@shared/components/layout/AppLayout";
+import api from "@shared/lib/axios";
 
 const ESTADO_CONFIG = {
   en_proceso:  { label: 'En proceso',  color: 'bg-orange-100 text-orange-700 border border-orange-200' },

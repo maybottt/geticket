@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
-import { login, elegirRol, registroCliente} from '../../api/auth'
-import api from '../../api/axios'
+import { useAuth } from '../context/AuthContext'
+import { login, elegirRol, registroCliente } from '../api/auth'
+import api from '@shared/lib/axios' 
+
 
 const ROL_CONFIG = {
   administrador: {
