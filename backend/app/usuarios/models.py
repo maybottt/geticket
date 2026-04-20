@@ -8,9 +8,9 @@ from .managers import UsuarioManager
 class Usuario(AbstractBaseUser, PermissionsMixin):
 
     email           = models.EmailField(max_length=255, unique=True)
-    username        = models.CharField(max_length=50, unique=True)
     nombres         = models.CharField(max_length=100)
     apellidos       = models.CharField(max_length=100)
+    username_admin  = models.CharField(max_length=20, unique=True)
     nro_celular     = models.CharField(max_length=20, null=True, blank=True)
     user_telegram   = models.CharField(max_length=50, null=True, blank=True)
     ci              = models.CharField(max_length=20, null=True, blank=True, unique=True)
@@ -22,7 +22,7 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
 
     objects = UsuarioManager() 
 
-    USERNAME_FIELD  = 'username'
+    USERNAME_FIELD  = 'username_admin'
     REQUIRED_FIELDS = ['email', 'nombres', 'apellidos']
 
     class Meta:
@@ -50,6 +50,7 @@ class Agente(models.Model):
         Usuario, on_delete=models.PROTECT,
         db_column='id_usuario', related_name='agente'
     )
+    username   = models.CharField(max_length=50, unique=True)
     estado     = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='activo')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -65,12 +66,6 @@ class Agente(models.Model):
 
 class Cliente(models.Model):
 
-    ROL_CHOICES = [
-        ('medico',    'Médico'),
-        ('cajero',    'Cajero'),
-        ('almacenes', 'Almacenes'),
-    ]
-
     ESTADO_CHOICES = [
         ('activo',    'Activo'),
         ('inactivo',  'Inactivo'),
@@ -85,9 +80,8 @@ class Cliente(models.Model):
         'instituciones.Institucion', on_delete=models.PROTECT,
         db_column='id_institucion', related_name='clientes'
     )
-    rol_institucion = models.CharField(
-        max_length=50, choices=ROL_CHOICES, null=True, blank=True
-    )
+    username        = models.CharField(max_length=50, unique=True)
+    rol_institucion = models.CharField(max_length=50) 
     estado = models.CharField(
         max_length=15, choices=ESTADO_CHOICES, default='activo'
     )

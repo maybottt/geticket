@@ -45,15 +45,17 @@ class CanalEntradaSerializer(serializers.ModelSerializer):
 # ──────────────────────────────────────────
 
 class AgenteAreaSerializer(serializers.ModelSerializer):
-    agente_nombre = serializers.CharField(
-        source='agente.usuario.get_full_name', read_only=True
-    )
+    agente_nombre = serializers.SerializerMethodField()
     area_nombre   = serializers.CharField(source='area.nombre', read_only=True)
 
     class Meta:
         model  = AgenteArea
         fields = ['id', 'agente', 'area', 'agente_nombre', 'area_nombre', 'asignado_en']
         read_only_fields = ['id', 'asignado_en']
+
+    def get_agente_nombre(self, obj):
+        u = obj.agente.usuario
+        return f'{u.nombres} {u.apellidos}'
 
     def validate(self, attrs):
         if AgenteArea.objects.filter(
@@ -66,9 +68,7 @@ class AgenteAreaSerializer(serializers.ModelSerializer):
 
 
 class AgenteHorarioSerializer(serializers.ModelSerializer):
-    agente_nombre  = serializers.CharField(
-        source='agente.usuario.get_full_name', read_only=True
-    )
+    agente_nombre  = serializers.SerializerMethodField()
     horario_nombre = serializers.CharField(source='horario.nombre', read_only=True)
 
     class Meta:
@@ -78,6 +78,10 @@ class AgenteHorarioSerializer(serializers.ModelSerializer):
             'vigente_desde', 'vigente_hasta',
         ]
         read_only_fields = ['id']
+
+    def get_agente_nombre(self, obj):
+        u = obj.agente.usuario
+        return f'{u.nombres} {u.apellidos}'
 
     def validate(self, attrs):
         vigente_desde = attrs.get('vigente_desde')

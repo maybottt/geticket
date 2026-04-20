@@ -8,7 +8,7 @@ from .models import Usuario, Agente, Cliente
 # Helpers
 # ──────────────────────────────────────────
 
-def get_roles(user): #sin importar el estado
+def get_roles(user): # sin importar el estado
     roles = []
     if user.is_admin:
         roles.append('administrador')
@@ -18,7 +18,7 @@ def get_roles(user): #sin importar el estado
         roles.append('cliente')
     return roles
 
-def get_roles_activos(user): #roles activos que tiene el usuario 
+def get_roles_activos(user): # roles activos que tiene el usuario 
     roles = []
     if user.is_admin:
         roles.append('administrador')
@@ -46,13 +46,13 @@ def get_token_para_rol(user, rol):
 # ──────────────────────────────────────────
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    username_admin = serializers.CharField()   # ← campo de autenticación
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
         from django.contrib.auth import authenticate
         user = authenticate(
-            username=attrs['username'],
+            username=attrs['username_admin'],   # Django usa USERNAME_FIELD = 'username_admin'
             password=attrs['password']
         )
         if not user:
@@ -66,7 +66,7 @@ class LoginSerializer(serializers.Serializer):
 
         attrs['user']  = user
         attrs['roles'] = roles
-        return attrs
+        return attrs 
 
 
 class ElegirRolSerializer(serializers.Serializer):
@@ -111,7 +111,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Usuario
         fields = [
-            'id', 'username', 'email', 'nombres', 'apellidos',
+            'id', 'username_admin', 'email', 'nombres', 'apellidos',
             'nro_celular', 'user_telegram', 'ci',
             'is_admin', 'is_active', 'created_at',
         ]
@@ -123,7 +123,7 @@ class UsuarioUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Usuario
         fields = [
-            'username', 'email', 'nombres', 'apellidos',
+            'username_admin', 'email', 'nombres', 'apellidos',
             'nro_celular', 'user_telegram', 'ci', 'is_active',
         ]
 
@@ -139,7 +139,7 @@ class PasswordChangeSerializer(serializers.Serializer):
         return value
 
 class RegistroUsuarioPublicoSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=150)
+    username_admin = serializers.CharField(max_length=20)   # ← campo requerido por el modelo
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
     nombres = serializers.CharField(max_length=100)
@@ -153,9 +153,9 @@ class RegistroUsuarioPublicoSerializer(serializers.Serializer):
             raise serializers.ValidationError("Ya existe un usuario con este email.")
         return value
 
-    def validate_username(self, value):
-        if Usuario.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Ya existe un usuario con este username.")
+    def validate_username_admin(self, value):
+        if Usuario.objects.filter(username_admin=value).exists():
+            raise serializers.ValidationError("Ya existe un usuario con este username_admin.")
         return value
 
     def create(self, validated_data):
@@ -173,7 +173,7 @@ class UsuarioConRolesSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = [
-            'id', 'username', 'email', 'nombres', 'apellidos',
+            'id', 'username_admin', 'email', 'nombres', 'apellidos',
             'nro_celular', 'user_telegram', 'ci',
             'is_admin', 'is_active', 'created_at', 'roles',
             'is_agente', 'is_cliente'
@@ -193,38 +193,54 @@ class AgenteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Agente
-        fields = ['id', 'usuario', 'estado', 'created_at']
+        fields = ['id', 'usuario', 'username', 'estado', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
 class AgenteCreateSerializer(serializers.Serializer):
-    username      = serializers.CharField(max_length=150)
-    email         = serializers.EmailField()
-    password      = serializers.CharField(write_only=True, min_length=8)
-    nombres       = serializers.CharField(max_length=100)
-    apellidos     = serializers.CharField(max_length=100)
-    nro_celular   = serializers.CharField(max_length=20,  required=False, allow_blank=True)
-    user_telegram = serializers.CharField(max_length=50,  required=False, allow_blank=True)
-    ci            = serializers.CharField(max_length=20,  required=False, allow_blank=True)
-    estado        = serializers.ChoiceField(choices=['activo', 'inactivo'], default='inactivo')
+    # Datos del Usuario
+    username_admin = serializers.CharField(max_length=20)   # ← autenticación
+    email          = serializers.EmailField()
+    password       = serializers.CharField(write_only=True, min_length=8)
+    nombres        = serializers.CharField(max_length=100)
+    apellidos      = serializers.CharField(max_length=100)
+    nro_celular    = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    user_telegram  = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    ci             = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    # Datos del perfil Agente
+    username       = serializers.CharField(max_length=50)   # ← username del agente
+    estado         = serializers.ChoiceField(choices=['activo', 'inactivo'], default='inactivo')
 
     def validate_email(self, value):
         if Usuario.objects.filter(email=value).exists():
             raise serializers.ValidationError('Ya existe un usuario con este email.')
         return value
 
+    def validate_username_admin(self, value):
+        if Usuario.objects.filter(username_admin=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este username_admin.')
+        return value
+
     def validate_username(self, value):
-        if Usuario.objects.filter(username=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este username.')
+        if Agente.objects.filter(username=value).exists():
+            raise serializers.ValidationError('Ya existe un agente con ese username.')
         return value
 
     def create(self, validated_data):
-        estado   = validated_data.pop('estado', 'activo')
+        # Separar datos del usuario y del agente
         password = validated_data.pop('password')
-        user     = Usuario(**validated_data, is_active=False)
+        agente_username = validated_data.pop('username')
+        estado = validated_data.pop('estado', 'inactivo')
+
+        user = Usuario(**validated_data, is_active=False)
         user.set_password(password)
         user.save()
-        return Agente.objects.create(usuario=user, estado=estado)
+
+        return Agente.objects.create(
+            usuario=user,
+            username=agente_username,
+            estado=estado
+        )
 
 
 # ──────────────────────────────────────────
@@ -237,12 +253,13 @@ class ClienteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model  = Cliente
-        fields = ['id', 'usuario', 'institucion', 'rol_institucion', 'estado', 'created_at']
+        fields = ['id', 'usuario', 'username', 'institucion', 'rol_institucion', 'estado', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
 class ClienteCreateSerializer(serializers.Serializer):
-    username        = serializers.CharField(max_length=150)
+    # Datos del Usuario
+    username_admin  = serializers.CharField(max_length=20)   # ← autenticación
     email           = serializers.EmailField()
     password        = serializers.CharField(write_only=True, min_length=8)
     nombres         = serializers.CharField(max_length=100)
@@ -250,11 +267,11 @@ class ClienteCreateSerializer(serializers.Serializer):
     nro_celular     = serializers.CharField(max_length=20, required=False, allow_blank=True)
     user_telegram   = serializers.CharField(max_length=50, required=False, allow_blank=True)
     ci              = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    # Datos del perfil Cliente
+    username        = serializers.CharField(max_length=50)   # ← username del cliente
     id_institucion  = serializers.IntegerField()
-    rol_institucion = serializers.ChoiceField(
-        choices=['medico', 'cajero', 'almacenes'], required=False, allow_null=True
-    )
-    estado = serializers.ChoiceField(
+    rol_institucion = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    estado          = serializers.ChoiceField(
         choices=['activo', 'inactivo', 'eliminado'], default='inactivo', required=False
     )
 
@@ -263,9 +280,14 @@ class ClienteCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError('Ya existe un usuario con este email.')
         return value
 
+    def validate_username_admin(self, value):
+        if Usuario.objects.filter(username_admin=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este username_admin.')
+        return value
+
     def validate_username(self, value):
-        if Usuario.objects.filter(username=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este username.')
+        if Cliente.objects.filter(username=value).exists():
+            raise serializers.ValidationError('Ya existe un cliente con ese username.')
         return value
 
     def validate_id_institucion(self, value):
@@ -276,15 +298,24 @@ class ClienteCreateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         from instituciones.models import Institucion
-        id_institucion  = validated_data.pop('id_institucion')
-        rol_institucion = validated_data.pop('rol_institucion', None)
-        password        = validated_data.pop('password')
-        user            = Usuario(**validated_data, is_active=False)
+
+        # Separar datos
+        password = validated_data.pop('password')
+        cliente_username = validated_data.pop('username')
+        id_institucion = validated_data.pop('id_institucion')
+        rol_institucion = validated_data.pop('rol_institucion', '')
+        estado = validated_data.pop('estado', 'inactivo')
+
+        user = Usuario(**validated_data, is_active=False)
         user.set_password(password)
         user.save()
+
+        institucion = Institucion.objects.get(pk=id_institucion)
+
         return Cliente.objects.create(
             usuario=user,
-            institucion=Institucion.objects.get(pk=id_institucion),
-            rol_institucion=rol_institucion, 
+            username=cliente_username,
+            institucion=institucion,
+            rol_institucion=rol_institucion,
             estado=estado,
         )

@@ -11,7 +11,6 @@
 CREATE TABLE usuario (
     id_usuario      SERIAL          PRIMARY KEY,
     email           VARCHAR(255)    NOT NULL UNIQUE,
-    username        VARCHAR(50)     NOT NULL UNIQUE,
     password        VARCHAR(255)    NOT NULL,
     nro_celular     VARCHAR(20)     NULL,
     user_telegram   VARCHAR(50)     NULL,
@@ -24,7 +23,35 @@ CREATE TABLE usuario (
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
 );
+-- ============================================================
+-- TABLA: CLIENTE
+-- ============================================================
+CREATE TABLE cliente (
+    id_cliente      SERIAL          PRIMARY KEY,
+    id_usuario      INT             NOT NULL UNIQUE REFERENCES usuario(id_usuario),
+    id_institucion  INT             NOT NULL REFERENCES institucion(id_institucion),
+    username        VARCHAR(50)     NOT NULL UNIQUE,
+    estado          VARCHAR(15)     NOT NULL DEFAULT 'activo'
+        CONSTRAINT chk_agente_estado
+            CHECK (estado IN ('activo', 'inactivo', 'eliminado')),
+    rol_institucion VARCHAR(50)     NOT NULL,
+    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
+);
 
+-- ============================================================
+-- TABLA: AGENTE
+-- ============================================================
+CREATE TABLE agente (
+    id_agente       SERIAL          PRIMARY KEY,
+    id_usuario      INT             NOT NULL UNIQUE REFERENCES usuario(id_usuario),
+    username        VARCHAR(50)     NOT NULL UNIQUE,
+    estado          VARCHAR(15)     NOT NULL DEFAULT 'activo'
+        CONSTRAINT chk_agente_estado
+            CHECK (estado IN ('activo', 'inactivo', 'eliminado')),
+    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
+);
 -- ============================================================
 -- TABLA: INSTITUCION
 -- ============================================================
@@ -118,35 +145,7 @@ CREATE TABLE canal_entrada (
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW()
 );
 
--- ============================================================
--- TABLA: CLIENTE
--- ============================================================
-CREATE TABLE cliente (
-    id_cliente      SERIAL          PRIMARY KEY,
-    id_usuario      INT             NOT NULL UNIQUE REFERENCES usuario(id_usuario),
-    id_institucion  INT             NOT NULL REFERENCES institucion(id_institucion),
-    estado          VARCHAR(15)     NOT NULL DEFAULT 'activo'
-        CONSTRAINT chk_agente_estado
-            CHECK (estado IN ('activo', 'inactivo', 'eliminado')),
-    rol_institucion VARCHAR(50)     NULL
-        CONSTRAINT chk_cliente_rol
-            CHECK (rol_institucion IN ('medico', 'cajero', 'almacenes') OR rol_institucion IS NULL),
-    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
-);
 
--- ============================================================
--- TABLA: AGENTE
--- ============================================================
-CREATE TABLE agente (
-    id_agente       SERIAL          PRIMARY KEY,
-    id_usuario      INT             NOT NULL UNIQUE REFERENCES usuario(id_usuario),
-    estado          VARCHAR(15)     NOT NULL DEFAULT 'activo'
-        CONSTRAINT chk_agente_estado
-            CHECK (estado IN ('activo', 'inactivo', 'eliminado')),
-    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
-);
 
 -- ============================================================
 -- TABLA: AGENTE_AREA
@@ -210,10 +209,10 @@ CREATE TABLE ticket (
     id_agente_escalado      INT             NULL REFERENCES agente(id_agente),
     estado                  VARCHAR(15)     NOT NULL DEFAULT 'en_proceso'
         CONSTRAINT chk_ticket_estado
-            CHECK (estado IN ('en_proceso', 'solucionado', 'cerrado', 'rechazado')),
-    prioridad               VARCHAR(20)     NOT NULL DEFAULT 'media'
+            CHECK (estado IN ('en_proceso', 'solucionado', 'cerrado', 'rechazado', 'escalado')),
+    prioridad               VARCHAR(20)     NOT NULL DEFAULT 'medio'
         CONSTRAINT chk_ticket_prioridad
-            CHECK (prioridad IN ('baja', 'media', 'alta')),
+            CHECK (prioridad IN ('bajo', 'medio', 'alto')),
     motivo_escalamiento     VARCHAR(200)    NULL,
     fecha_primera_respuesta TIMESTAMP       NULL,
     fecha_solucionado       TIMESTAMP       NULL,

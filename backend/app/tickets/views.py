@@ -3,6 +3,7 @@ from django.shortcuts import render
 # Create your views here.
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Count, Q   # ← importación directa de Q
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -19,8 +20,6 @@ from .serializers import (
     NotificacionSerializer,
 )
 from .utils import generar_codigo_ticket, registrar_historial
-from django.db.models import Count
-from django.db.models import Count, Q
 
 
 # ──────────────────────────────────────────
@@ -95,7 +94,7 @@ class SolicitudListCreateView(APIView):
             ticket = Ticket.objects.create(
                 codigo_ticket=generar_codigo_ticket(),
                 solicitud=solicitud,
-                prioridad=serializer.validated_data.get('prioridad', 'media'),
+                prioridad=serializer.validated_data.get('prioridad', 'medio'),  # ← default actualizado
             )
 
             registrar_historial(
@@ -256,7 +255,6 @@ class TicketAsignarAutomaticoView(APIView):
         )
 
         from operaciones.models import AgenteArea
-        from django.db.models import Count
 
         # Agentes del área asignada al ticket
         if not ticket.area:
@@ -270,9 +268,7 @@ class TicketAsignarAutomaticoView(APIView):
             .filter(area=ticket.area, agente__estado='activo')
             .annotate(tickets_activos=Count(
                 'agente__tickets_asignados',
-                filter=__import__('django.db.models', fromlist=['Q']).Q(
-                    agente__tickets_asignados__estado='en_proceso'
-                )
+                filter=Q(agente__tickets_asignados__estado='en_proceso')  # ← uso directo de Q
             ))
             .order_by('tickets_activos')
             .select_related('agente__usuario')
@@ -491,7 +487,6 @@ class NotificacionListView(APIView):
             destinatario=request.user
         ).order_by('-created_at')
         return Response(NotificacionSerializer(qs, many=True).data)
-
 
 
 # ──────────────────────────────────────────

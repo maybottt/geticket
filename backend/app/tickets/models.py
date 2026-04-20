@@ -67,9 +67,9 @@ class Ticket(models.Model):
         ('rechazado',   'Rechazado'),
     ]
     PRIORIDAD_CHOICES = [
-        ('baja',  'Baja'),
-        ('media', 'Media'),
-        ('alta',  'Alta'),
+        ('bajo',  'Bajo'),
+        ('medio', 'Medio'),
+        ('alto',  'Alto'),
     ]
 
     codigo_ticket           = models.CharField(max_length=20, unique=True)

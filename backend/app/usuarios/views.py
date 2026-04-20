@@ -13,7 +13,8 @@ from .serializers import (
     UsuarioSerializer, UsuarioUpdateSerializer, PasswordChangeSerializer,
     AgenteSerializer, AgenteCreateSerializer,
     ClienteSerializer, ClienteCreateSerializer,
-    get_roles, get_token_para_rol,UsuarioConRolesSerializer, 
+    get_roles, get_token_para_rol, UsuarioConRolesSerializer, 
+    RegistroUsuarioPublicoSerializer
 )
 from instituciones.models import Institucion
 
@@ -205,10 +206,10 @@ class ClienteDetailView(APIView):
         cliente = get_object_or_404(Cliente, pk=pk)
         if cliente.estado == 'activo':
             cliente.estado = 'inactivo'
-            msg = f'Cliente {cliente.usuario.username} desactivado.'
+            msg = f'Cliente {cliente.usuario.email} desactivado.'
         else:
             cliente.estado = 'activo'
-            msg = f'Cliente {cliente.usuario.username} activado.'
+            msg = f'Cliente {cliente.usuario.email} activado.'
         cliente.save()
         return Response({'detail': msg})
 
@@ -244,9 +245,11 @@ class RegistroClienteView(APIView):
         # El admin lo aprueba después cambiándolo a True
         data = request.data.copy()
 
-        # Validaciones básicas
+        # Validaciones básicas (ahora usamos username_admin)
+        if not data.get('username_admin'):
+            return Response({'detail': 'El username_admin es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
         if not data.get('username'):
-            return Response({'detail': 'El username es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'El username del cliente es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
         if not data.get('email'):
             return Response({'detail': 'El email es obligatorio.'}, status=status.HTTP_400_BAD_REQUEST)
         if not data.get('password'):
@@ -258,10 +261,12 @@ class RegistroClienteView(APIView):
         if not data.get('id_institucion'):
             return Response({'detail': 'La institución es obligatoria.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if Usuario.objects.filter(username=data.get('username')).exists():
-            return Response({'detail': 'Ya existe un usuario con ese username.'}, status=status.HTTP_400_BAD_REQUEST)
+        if Usuario.objects.filter(username_admin=data.get('username_admin')).exists():
+            return Response({'detail': 'Ya existe un usuario con ese username_admin.'}, status=status.HTTP_400_BAD_REQUEST)
         if Usuario.objects.filter(email=data.get('email')).exists():
             return Response({'detail': 'Ya existe un usuario con ese email.'}, status=status.HTTP_400_BAD_REQUEST)
+        if Cliente.objects.filter(username=data.get('username')).exists():
+            return Response({'detail': 'Ya existe un cliente con ese username.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             institucion = Institucion.objects.get(pk=data.get('id_institucion'), estado='activo')
@@ -270,34 +275,39 @@ class RegistroClienteView(APIView):
 
         with transaction.atomic():
             user = Usuario(
-                username      = data.get('username'),
-                email         = data.get('email'),
-                nombres       = data.get('nombres'),
-                apellidos     = data.get('apellidos'),
-                nro_celular   = data.get('nro_celular', ''),
-                user_telegram = data.get('user_telegram', ''),
-                ci            = data.get('ci') or None,
-                is_active     = False,  # espera aprobación
+                username_admin = data.get('username_admin'),
+                email          = data.get('email'),
+                nombres        = data.get('nombres'),
+                apellidos      = data.get('apellidos'),
+                nro_celular    = data.get('nro_celular', ''),
+                user_telegram  = data.get('user_telegram', ''),
+                ci             = data.get('ci') or None,
+                is_active      = False,  # espera aprobación
             )
             user.set_password(data.get('password'))
             user.save()
 
             Cliente.objects.create(
-                usuario        = user,
-                institucion    = institucion,
-                rol_institucion= data.get('rol_institucion') or None,
+                usuario         = user,
+                username        = data.get('username'),
+                institucion     = institucion,
+                rol_institucion = data.get('rol_institucion', ''),
             )
 
         return Response(
             {'detail': 'Registro exitoso. Tu cuenta está pendiente de aprobación por un administrador.'},
             status=status.HTTP_201_CREATED
         )
+
     def _solicitar_rol_cliente(self, usuario, data):
         id_institucion = data.get('id_institucion')
-        rol_institucion = data.get('rol_institucion')
+        rol_institucion = data.get('rol_institucion', '')
+        username = data.get('username')
         
         if not id_institucion:
             return Response({'detail': 'Se requiere id_institucion.'}, status=400)
+        if not username:
+            return Response({'detail': 'Se requiere un username para el cliente.'}, status=400)
         
         from instituciones.models import Institucion
         try:
@@ -315,11 +325,15 @@ class RegistroClienteView(APIView):
                 cliente.estado = 'inactivo'
                 cliente.institucion = institucion
                 cliente.rol_institucion = rol_institucion
+                cliente.username = username
                 cliente.save()
                 return Response({'detail': 'Solicitud reactivada.'}, status=200)
         else:
+            if Cliente.objects.filter(username=username).exists():
+                return Response({'detail': 'Ya existe un cliente con ese username.'}, status=400)
             Cliente.objects.create(
                 usuario=usuario,
+                username=username,
                 institucion=institucion,
                 rol_institucion=rol_institucion,
                 estado='inactivo'
@@ -341,7 +355,7 @@ class ClienteEliminarView(APIView):
         cliente.save()
         cliente.usuario.is_active = False
         cliente.usuario.save()
-        return Response({'detail': f'Cliente {cliente.usuario.username} marcado como eliminado.'})
+        return Response({'detail': f'Cliente {cliente.usuario.email} marcado como eliminado.'})
 
 class AprobarClienteView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -352,7 +366,7 @@ class AprobarClienteView(APIView):
         cliente.usuario.save()
         cliente.estado = 'activo'
         cliente.save()
-        return Response({'detail': f'Cliente {cliente.usuario.username} aprobado correctamente.'})
+        return Response({'detail': f'Cliente {cliente.usuario.email} aprobado correctamente.'})
 
 
 
@@ -415,7 +429,7 @@ class AprobarUsuarioView(APIView):
             )
         usuario.is_active = True
         usuario.save()
-        return Response({'detail': f'Usuario {usuario.username} aprobado.'})
+        return Response({'detail': f'Usuario {usuario.email} aprobado.'})
 
 
 class AsignarRolAgenteView(APIView):
@@ -428,7 +442,13 @@ class AsignarRolAgenteView(APIView):
                 {'detail': 'El usuario ya tiene perfil de agente.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        agente = Agente.objects.create(usuario=usuario, estado='activo')
+        # Se requiere un username para el agente
+        username_agente = request.data.get('username')
+        if not username_agente:
+            return Response({'detail': 'Se requiere el campo "username" para el agente.'}, status=400)
+        if Agente.objects.filter(username=username_agente).exists():
+            return Response({'detail': 'Ya existe un agente con ese username.'}, status=400)
+        agente = Agente.objects.create(usuario=usuario, username=username_agente, estado='activo')
         return Response(
             {'detail': 'Perfil de agente creado.', 'id_agente': agente.id},
             status=status.HTTP_201_CREATED
@@ -446,14 +466,17 @@ class AsignarRolClienteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Se requiere institución
+        # Se requiere institución y username
         id_institucion = request.data.get('id_institucion')
-        rol = request.data.get('rol_institucion')
+        rol = request.data.get('rol_institucion', '')
+        username_cliente = request.data.get('username')
         if not id_institucion:
             return Response(
                 {'detail': 'Se requiere id_institucion.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if not username_cliente:
+            return Response({'detail': 'Se requiere el campo "username" para el cliente.'}, status=400)
 
         from instituciones.models import Institucion
         try:
@@ -463,10 +486,13 @@ class AsignarRolClienteView(APIView):
                 {'detail': 'Institución no encontrada o inactiva.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if Cliente.objects.filter(username=username_cliente).exists():
+            return Response({'detail': 'Ya existe un cliente con ese username.'}, status=400)
 
         with transaction.atomic():
             cliente = Cliente.objects.create(
                 usuario=usuario,
+                username=username_cliente,
                 institucion=institucion,
                 rol_institucion=rol
             )
@@ -514,30 +540,12 @@ class ClienteToggleActivoView(APIView):
         cliente = get_object_or_404(Cliente, pk=pk)
         if cliente.estado == 'activo':
             cliente.estado = 'inactivo'
-            msg = f'Cliente {cliente.usuario.username} desactivado.'
+            msg = f'Cliente {cliente.usuario.email} desactivado.'
         else:
             cliente.estado = 'activo'
-            msg = f'Cliente {cliente.usuario.username} activado.'
+            msg = f'Cliente {cliente.usuario.email} activado.'
         cliente.save()
         return Response({'detail': msg})
-
-
-class ClienteEliminarView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-
-    def post(self, request, pk):
-        cliente = get_object_or_404(Cliente, pk=pk)
-        if cliente.estado == 'eliminado':
-            return Response(
-                {'detail': 'El cliente ya está eliminado.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        cliente.estado = 'eliminado'
-        cliente.save()
-        cliente.usuario.is_active = False
-        cliente.usuario.save()
-        return Response({'detail': f'Cliente {cliente.usuario.username} marcado como eliminado.'})
-
 
 
 # ──────────────────────────────────────────
@@ -549,10 +557,10 @@ class RegistroAgenteView(APIView):
     def post(self, request):
 
         if request.user.is_authenticated:
-            return self._solicitar_rol_agente(request.user)  
+            return self._solicitar_rol_agente(request.user, request.data)  
 
         data = request.data.copy()
-        data['estado'] = 'inactivo'   
+        data['estado'] = 'inactivo'   # por defecto pendiente de aprobación
 
         serializer = AgenteCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
@@ -564,12 +572,19 @@ class RegistroAgenteView(APIView):
 
         return Response(
             {
-                'detail': 'Registro de agente exitoso. Tu cuenta está pendiente de aprobación por el administrador.'},
+                'detail': 'Registro de agente exitoso. Tu cuenta está pendiente de aprobación por el administrador.'
+            },
             status=status.HTTP_201_CREATED
         )
 
-    def _solicitar_rol_agente(self, usuario):
+    def _solicitar_rol_agente(self, usuario, data):
         # Verificar si ya tiene perfil de agente
+        username_agente = data.get('username')
+        if not username_agente:
+            return Response({'detail': 'Se requiere el campo "username" para el agente.'}, status=400)
+        if Agente.objects.filter(username=username_agente).exists():
+            return Response({'detail': 'Ya existe un agente con ese username.'}, status=400)
+
         if hasattr(usuario, 'agente'):
             agente = usuario.agente
             if agente.estado == 'activo':
@@ -585,13 +600,14 @@ class RegistroAgenteView(APIView):
             elif agente.estado == 'eliminado':
                 # Reactivar solicitud
                 agente.estado = 'inactivo'
+                agente.username = username_agente
                 agente.save()
                 return Response({
                     'detail': 'Tu solicitud para ser agente ha sido reactivada. Espera aprobación.'
                 }, status=status.HTTP_200_OK)
         else:
             # Crear nuevo agente inactivo
-            Agente.objects.create(usuario=usuario, estado='inactivo')
+            Agente.objects.create(usuario=usuario, username=username_agente, estado='inactivo')
             return Response({
                 'detail': 'Solicitud para ser agente enviada. Espera aprobación del administrador.'
             }, status=status.HTTP_201_CREATED)
@@ -629,7 +645,7 @@ class AgenteAprobarView(APIView):
             agente.estado = 'activo'
             agente.save()
 
-        return Response({'detail': f'Agente {agente.usuario.username} aprobado correctamente.'})
+        return Response({'detail': f'Agente {agente.usuario.email} aprobado correctamente.'})
 
 class AgenteToggleActivoView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -638,9 +654,9 @@ class AgenteToggleActivoView(APIView):
         agente = get_object_or_404(Agente, pk=pk)
         if agente.estado == 'activo':
             agente.estado = 'inactivo'
-            msg = f'Agente {agente.usuario.username} desactivado.'
+            msg = f'Agente {agente.usuario.email} desactivado.'
         else:
             agente.estado = 'activo'
-            msg = f'Agente {agente.usuario.username} activado.'
+            msg = f'Agente {agente.usuario.email} activado.'
         agente.save()
         return Response({'detail': msg})

@@ -103,7 +103,7 @@ class TicketCreateSerializer(serializers.Serializer):
     sistema     = serializers.IntegerField()
     descripcion = serializers.CharField()
     prioridad   = serializers.ChoiceField(
-        choices=['baja', 'media', 'alta'], default='media'
+        choices=['bajo', 'medio', 'alto'], default='medio'  # ← actualizado según modelo
     )
     received_at = serializers.DateTimeField(required=False, allow_null=True)
 

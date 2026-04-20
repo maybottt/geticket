@@ -56,9 +56,10 @@ class InstitucionDetailView(APIView):
         institucion         = self.get_object(pk)
         institucion.estado  = 'eliminado'
         institucion.save()
-        # Desactiva también sus sistemas
+        # Desactiva también sus sistemas asociados (a través de la tabla intermedia)
         institucion.sistemas.filter(estado='activo').update(estado='inactivo')
         return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class InstitucionPublicaListView(APIView):
     permission_classes = []  # público
@@ -66,6 +67,7 @@ class InstitucionPublicaListView(APIView):
     def get(self, request):
         qs = Institucion.objects.filter(estado='activo').values('id', 'nombre')
         return Response(list(qs))
+
 
 # ──────────────────────────────────────────
 # Sistemas
@@ -75,11 +77,11 @@ class SistemaListCreateView(APIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def get(self, request):
-        qs = Sistema.objects.exclude(estado='eliminado').select_related('institucion')
+        qs = Sistema.objects.exclude(estado='eliminado').prefetch_related('instituciones')
         # Filtro opcional por institución: /api/sistemas/?institucion=1
         id_institucion = request.query_params.get('institucion')
         if id_institucion:
-            qs = qs.filter(institucion_id=id_institucion)
+            qs = qs.filter(instituciones__id=id_institucion)
         return Response(SistemaSerializer(qs, many=True).data)
 
     def post(self, request):
@@ -97,7 +99,7 @@ class SistemaDetailView(APIView):
 
     def get_object(self, pk):
         return get_object_or_404(
-            Sistema.objects.select_related('institucion'), pk=pk
+            Sistema.objects.prefetch_related('instituciones'), pk=pk
         )
 
     def get(self, request, pk):
