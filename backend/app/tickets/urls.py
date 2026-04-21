@@ -32,3 +32,9 @@ urlpatterns = [
     path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard_stats'),
 
 ]
+
+#endpoints faltants: 
+#  tickets correspondientes a un agente.
+#  tickets correspondientes a un cliente. 
+#  filtros de tickets (o desde frontend?) correspondiente a lo de arriba. 
+#  escalar ticket (2da version) 

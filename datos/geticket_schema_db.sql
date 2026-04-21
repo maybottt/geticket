@@ -19,7 +19,7 @@ CREATE TABLE usuario (
     nombres         VARCHAR(100)    NOT NULL,
     apellidos       VARCHAR(100)    NOT NULL,
     is_active       BOOLEAN         NOT NULL DEFAULT TRUE,
-    last_login      TIMESTAMP       NULL,
+    last_login      TIMESTAMP       NOT NULL DEFAULT NOW(),
     created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP       NOT NULL DEFAULT NOW()
 );

@@ -1,321 +1,233 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Usuario, Agente, Cliente
-
+from .models import Usuario, Agente, Cliente, Administrador
 
 # ──────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────
-
-def get_roles(user): # sin importar el estado
-    roles = []
-    if user.is_admin:
-        roles.append('administrador')
-    if hasattr(user, 'agente'):
-        roles.append('agente')
-    if hasattr(user, 'cliente'):
-        roles.append('cliente')
-    return roles
-
-def get_roles_activos(user): # roles activos que tiene el usuario 
-    roles = []
-    if user.is_admin:
-        roles.append('administrador')
+ 
+def get_rol(user):
+    """Devuelve el rol activo del usuario, o None."""
+    if hasattr(user, 'administrador') and user.administrador.estado == 'activo':
+        return 'administrador'
     if hasattr(user, 'agente') and user.agente.estado == 'activo':
-        roles.append('agente')
-    if hasattr(user, 'cliente') and user.cliente.estado == 'activo':  
-        roles.append('cliente')
-    return roles
-
-def get_token_para_rol(user, rol):
-    """Genera un RefreshToken con el rol_activo en el payload."""
-    roles_disponibles = get_roles_activos(user)
-    if rol not in roles_disponibles:
-        raise serializers.ValidationError(
-            f'El usuario no tiene el rol "{rol}".'
-        )
+        return 'agente'
+    if hasattr(user, 'cliente') and user.cliente.estado == 'activo':
+        return 'cliente'
+    return None
+ 
+ 
+def get_token_para_usuario(user):
+    """Genera un RefreshToken con el rol en el payload."""
+    rol = get_rol(user)
     refresh = RefreshToken.for_user(user)
-    refresh['rol_activo'] = rol
-    refresh['roles']      = roles_disponibles
+    refresh['rol'] = rol
     return refresh
-
-
+ 
+ 
 # ──────────────────────────────────────────
 # Auth
 # ──────────────────────────────────────────
-
+ 
 class LoginSerializer(serializers.Serializer):
-    username_admin = serializers.CharField()   # ← campo de autenticación
+    username = serializers.CharField()
     password = serializers.CharField(write_only=True)
-
+ 
     def validate(self, attrs):
         from django.contrib.auth import authenticate
         user = authenticate(
-            username=attrs['username_admin'],   # Django usa USERNAME_FIELD = 'username_admin'
+            username=attrs['username'],
             password=attrs['password']
         )
         if not user:
             raise serializers.ValidationError('Credenciales incorrectas.')
         if not user.is_active:
             raise serializers.ValidationError('Usuario inactivo.')
-
-        roles = get_roles_activos(user)
-        if not roles:
+ 
+        rol = get_rol(user)
+        if not rol:
             raise serializers.ValidationError('El usuario no tiene ningún rol asignado.')
-
-        attrs['user']  = user
-        attrs['roles'] = roles
-        return attrs 
-
-
-class ElegirRolSerializer(serializers.Serializer):
-    user_id = serializers.IntegerField()
-    rol     = serializers.CharField()
-
-    def validate(self, attrs):
-        try:
-            user = Usuario.objects.get(pk=attrs['user_id'], is_active=True)
-        except Usuario.DoesNotExist:
-            raise serializers.ValidationError('Usuario no encontrado.')
-
-        roles = get_roles_activos(user)
-        if attrs['rol'] not in roles:
-            raise serializers.ValidationError(
-                f'El usuario no tiene el rol "{attrs["rol"]}".'
-            )
-        attrs['user']  = user
-        attrs['roles'] = roles
+ 
+        attrs['user'] = user
+        attrs['rol']  = rol
         return attrs
-
-
-class SwitchRolSerializer(serializers.Serializer):
-    rol = serializers.CharField()
-
-    def validate_rol(self, value):
-        user  = self.context['request'].user
-        roles = get_roles_activos(user)
-        if value not in roles:
-            raise serializers.ValidationError(
-                f'No tienes el rol "{value}".'
-            )
-        return value
-
-
+ 
+ 
 # ──────────────────────────────────────────
 # Usuario
 # ──────────────────────────────────────────
-
+ 
 class UsuarioSerializer(serializers.ModelSerializer):
-
+ 
     class Meta:
         model  = Usuario
         fields = [
-            'id', 'username_admin', 'email', 'nombres', 'apellidos',
-            'nro_celular', 'user_telegram', 'ci',
-            'is_admin', 'is_active', 'created_at',
+            'id', 'username', 'email', 'nombres', 'apellidos',
+            'nro_celular', 'nro_celular_dos', 'user_telegram', 'ci',
+            'is_active', 'created_at',
         ]
         read_only_fields = ['id', 'created_at']
-
-
+ 
+ 
 class UsuarioUpdateSerializer(serializers.ModelSerializer):
-
+ 
     class Meta:
         model  = Usuario
         fields = [
-            'username_admin', 'email', 'nombres', 'apellidos',
-            'nro_celular', 'user_telegram', 'ci', 'is_active',
+            'username', 'email', 'nombres', 'apellidos',
+            'nro_celular', 'nro_celular_dos', 'user_telegram', 'ci', 'is_active',
         ]
-
-
+ 
+ 
 class PasswordChangeSerializer(serializers.Serializer):
     password_actual = serializers.CharField(write_only=True)
     password_nuevo  = serializers.CharField(write_only=True, min_length=8)
-
+ 
     def validate_password_actual(self, value):
         user = self.context['request'].user
         if not user.check_password(value):
             raise serializers.ValidationError('La contraseña actual es incorrecta.')
         return value
-
-class RegistroUsuarioPublicoSerializer(serializers.Serializer):
-    username_admin = serializers.CharField(max_length=20)   # ← campo requerido por el modelo
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=8)
-    nombres = serializers.CharField(max_length=100)
-    apellidos = serializers.CharField(max_length=100)
-    nro_celular = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    user_telegram = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    ci = serializers.CharField(max_length=20, required=False, allow_blank=True)
-
-    def validate_email(self, value):
-        if Usuario.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Ya existe un usuario con este email.")
-        return value
-
-    def validate_username_admin(self, value):
-        if Usuario.objects.filter(username_admin=value).exists():
-            raise serializers.ValidationError("Ya existe un usuario con este username_admin.")
-        return value
-
-    def create(self, validated_data):
-        password = validated_data.pop('password')
-        user = Usuario(**validated_data, is_active=False)
-        user.set_password(password)
-        user.save()
-        return user
-
-class UsuarioConRolesSerializer(serializers.ModelSerializer):
-    roles = serializers.SerializerMethodField()
-    is_agente = serializers.BooleanField(source='agente', read_only=True)
-    is_cliente = serializers.BooleanField(source='cliente', read_only=True)
-
-    class Meta:
-        model = Usuario
-        fields = [
-            'id', 'username_admin', 'email', 'nombres', 'apellidos',
-            'nro_celular', 'user_telegram', 'ci',
-            'is_admin', 'is_active', 'created_at', 'roles',
-            'is_agente', 'is_cliente'
-        ]
-        read_only_fields = ['id', 'created_at']
-
-    def get_roles(self, obj):
-        return get_roles_activos(obj)
-
-
-# ──────────────────────────────────────────
-# Agente
-# ──────────────────────────────────────────
-
-class AgenteSerializer(serializers.ModelSerializer):
-    usuario = UsuarioSerializer(read_only=True)
-
-    class Meta:
-        model  = Agente
-        fields = ['id', 'usuario', 'username', 'estado', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-
-class AgenteCreateSerializer(serializers.Serializer):
-    # Datos del Usuario
-    username_admin = serializers.CharField(max_length=20)   # ← autenticación
-    email          = serializers.EmailField()
-    password       = serializers.CharField(write_only=True, min_length=8)
-    nombres        = serializers.CharField(max_length=100)
-    apellidos      = serializers.CharField(max_length=100)
-    nro_celular    = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    user_telegram  = serializers.CharField(max_length=50, required=False, allow_blank=True)
-    ci             = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    # Datos del perfil Agente
-    username       = serializers.CharField(max_length=50)   # ← username del agente
-    estado         = serializers.ChoiceField(choices=['activo', 'inactivo'], default='inactivo')
-
-    def validate_email(self, value):
-        if Usuario.objects.filter(email=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este email.')
-        return value
-
-    def validate_username_admin(self, value):
-        if Usuario.objects.filter(username_admin=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este username_admin.')
-        return value
-
-    def validate_username(self, value):
-        if Agente.objects.filter(username=value).exists():
-            raise serializers.ValidationError('Ya existe un agente con ese username.')
-        return value
-
-    def create(self, validated_data):
-        # Separar datos del usuario y del agente
-        password = validated_data.pop('password')
-        agente_username = validated_data.pop('username')
-        estado = validated_data.pop('estado', 'inactivo')
-
-        user = Usuario(**validated_data, is_active=False)
-        user.set_password(password)
-        user.save()
-
-        return Agente.objects.create(
-            usuario=user,
-            username=agente_username,
-            estado=estado
-        )
-
-
-# ──────────────────────────────────────────
-# Cliente
-# ──────────────────────────────────────────
-
-class ClienteSerializer(serializers.ModelSerializer):
-    usuario     = UsuarioSerializer(read_only=True)
-    institucion = serializers.StringRelatedField()
-
-    class Meta:
-        model  = Cliente
-        fields = ['id', 'usuario', 'username', 'institucion', 'rol_institucion', 'estado', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-
-class ClienteCreateSerializer(serializers.Serializer):
-    # Datos del Usuario
-    username_admin  = serializers.CharField(max_length=20)   # ← autenticación
+ 
+ 
+class RegistroUsuarioBaseSerializer(serializers.Serializer):
+    """Campos comunes de usuario para todos los registros."""
+    username        = serializers.CharField(max_length=50)
     email           = serializers.EmailField()
     password        = serializers.CharField(write_only=True, min_length=8)
     nombres         = serializers.CharField(max_length=100)
     apellidos       = serializers.CharField(max_length=100)
     nro_celular     = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    nro_celular_dos = serializers.CharField(max_length=20, required=False, allow_blank=True)
     user_telegram   = serializers.CharField(max_length=50, required=False, allow_blank=True)
     ci              = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    # Datos del perfil Cliente
-    username        = serializers.CharField(max_length=50)   # ← username del cliente
+ 
+    def validate_email(self, value):
+        if Usuario.objects.filter(email=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este email.')
+        return value
+ 
+    def validate_username(self, value):
+        if Usuario.objects.filter(username=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este username.')
+        return value
+ 
+ 
+class UsuarioConRolSerializer(serializers.ModelSerializer):
+    rol = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model  = Usuario
+        fields = [
+            'id', 'username', 'email', 'nombres', 'apellidos',
+            'nro_celular', 'nro_celular_dos', 'user_telegram', 'ci',
+            'is_active', 'created_at', 'rol',
+        ]
+        read_only_fields = ['id', 'created_at']
+ 
+    def get_rol(self, obj):
+        return get_rol(obj)
+ 
+ 
+# ──────────────────────────────────────────
+# Agente
+# ──────────────────────────────────────────
+ 
+class AgenteSerializer(serializers.ModelSerializer):
+    usuario = UsuarioSerializer(read_only=True)
+ 
+    class Meta:
+        model  = Agente
+        fields = ['id', 'usuario', 'estado', 'created_at']
+        read_only_fields = ['id', 'created_at']
+ 
+ 
+class AgenteCreateSerializer(RegistroUsuarioBaseSerializer):
+    estado = serializers.ChoiceField(choices=['activo', 'inactivo'], default='inactivo')
+ 
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        estado   = validated_data.pop('estado', 'inactivo')
+ 
+        user = Usuario(**validated_data, is_active=False)
+        user.set_password(password)
+        user.save()
+ 
+        return Agente.objects.create(usuario=user, estado=estado)
+ 
+ 
+# ──────────────────────────────────────────
+# Cliente
+# ──────────────────────────────────────────
+ 
+class ClienteSerializer(serializers.ModelSerializer):
+    usuario     = UsuarioSerializer(read_only=True)
+    institucion = serializers.StringRelatedField()
+ 
+    class Meta:
+        model  = Cliente
+        fields = ['id', 'usuario', 'institucion', 'rol_institucion', 'estado', 'created_at']
+        read_only_fields = ['id', 'created_at']
+ 
+ 
+class ClienteCreateSerializer(RegistroUsuarioBaseSerializer):
     id_institucion  = serializers.IntegerField()
     rol_institucion = serializers.CharField(max_length=50, required=False, allow_blank=True)
     estado          = serializers.ChoiceField(
         choices=['activo', 'inactivo', 'eliminado'], default='inactivo', required=False
     )
-
-    def validate_email(self, value):
-        if Usuario.objects.filter(email=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este email.')
-        return value
-
-    def validate_username_admin(self, value):
-        if Usuario.objects.filter(username_admin=value).exists():
-            raise serializers.ValidationError('Ya existe un usuario con este username_admin.')
-        return value
-
-    def validate_username(self, value):
-        if Cliente.objects.filter(username=value).exists():
-            raise serializers.ValidationError('Ya existe un cliente con ese username.')
-        return value
-
+ 
     def validate_id_institucion(self, value):
         from instituciones.models import Institucion
         if not Institucion.objects.filter(pk=value, estado='activo').exists():
             raise serializers.ValidationError('Institución no encontrada o inactiva.')
         return value
-
+ 
     def create(self, validated_data):
         from instituciones.models import Institucion
-
-        # Separar datos
-        password = validated_data.pop('password')
-        cliente_username = validated_data.pop('username')
-        id_institucion = validated_data.pop('id_institucion')
+ 
+        password        = validated_data.pop('password')
+        id_institucion  = validated_data.pop('id_institucion')
         rol_institucion = validated_data.pop('rol_institucion', '')
-        estado = validated_data.pop('estado', 'inactivo')
-
+        estado          = validated_data.pop('estado', 'inactivo')
+ 
         user = Usuario(**validated_data, is_active=False)
         user.set_password(password)
         user.save()
-
+ 
         institucion = Institucion.objects.get(pk=id_institucion)
-
+ 
         return Cliente.objects.create(
             usuario=user,
-            username=cliente_username,
             institucion=institucion,
             rol_institucion=rol_institucion,
             estado=estado,
         )
+ 
+ 
+# ──────────────────────────────────────────
+# Administrador
+# ──────────────────────────────────────────
+ 
+class AdministradorSerializer(serializers.ModelSerializer):
+    usuario = UsuarioSerializer(read_only=True)
+ 
+    class Meta:
+        model  = Administrador
+        fields = ['id', 'usuario', 'estado', 'created_at']
+        read_only_fields = ['id', 'created_at']
+ 
+ 
+class AdministradorCreateSerializer(RegistroUsuarioBaseSerializer):
+    estado = serializers.ChoiceField(choices=['activo', 'inactivo'], default='activo')
+ 
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        estado   = validated_data.pop('estado', 'activo')
+ 
+        user = Usuario(**validated_data, is_active=True, is_superuser=True)
+        user.set_password(password)
+        user.save()
+ 
+        return Administrador.objects.create(usuario=user, estado=estado)
