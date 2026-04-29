@@ -1,15 +1,13 @@
-from django.urls import path
+from rest_framework.routers import DefaultRouter
 from .views import (
-    InstitucionListCreateView, InstitucionDetailView,
-    SistemaListCreateView, SistemaDetailView, InstitucionPublicaListView, 
+    InstitucionViewSet, SistemaViewSet,
+    InstitucionSistemaViewSet, AreaViewSet
 )
 
-urlpatterns = [
-    path('instituciones/',          InstitucionListCreateView.as_view(), name='institucion_list_create'),
-    path('instituciones/<int:pk>/', InstitucionDetailView.as_view(),    name='institucion_detail'),
+router = DefaultRouter()
+router.register(r'instituciones', InstitucionViewSet, basename='instituciones')
+router.register(r'sistemas', SistemaViewSet, basename='sistemas')
+router.register(r'institucion-sistemas', InstitucionSistemaViewSet, basename='institucion-sistemas')
+router.register(r'areas', AreaViewSet, basename='areas')
 
-    path('sistemas/',          SistemaListCreateView.as_view(), name='sistema_list_create'),
-    path('sistemas/<int:pk>/', SistemaDetailView.as_view(),    name='sistema_detail'), 
-    path('instituciones/publicas/', InstitucionPublicaListView.as_view(), name='instituciones_publicas'),
-
-]
+urlpatterns = router.urls
