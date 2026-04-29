@@ -1,168 +1,146 @@
+# tickets/serializers.py
 from rest_framework import serializers
-from .models import Solicitud, Adjunto, Ticket, HistorialTicket, Notificacion
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+
+from .models import (
+    CategoriaIncidencia,
+    Ticket,
+    Adjunto,
+    HistorialTicket,
+    Notificacion,
+    SatisfaccionTicket,
+)
+from usuarios.models import Agente, Cliente, Usuario
+from operaciones.models import CanalEntrada
+from instituciones.models import Area, Sistema
 
 
-class AdjuntoSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model  = Adjunto
-        fields = [
-            'id', 'nombre_archivo', 'url_archivo',
-            'tamanio_bytes', 'uploaded_at', 'subido_por',
-        ]
-        read_only_fields = ['id', 'uploaded_at']
-
-
-class SolicitudSerializer(serializers.ModelSerializer):
-    adjuntos = AdjuntoSerializer(many=True, read_only=True)
-
-    class Meta:
-        model  = Solicitud
-        fields = [
-            'id', 'cliente', 'canal', 'sistema',
-            'descripcion', 'received_at', 'created_at',
-            'adjuntos',
-        ]
-        read_only_fields = ['id', 'created_at']
-
-
-class SolicitudCreateSerializer(serializers.ModelSerializer):
+# ---------------------------------------------------------------------------
+# Categoría de incidencia
+# ---------------------------------------------------------------------------
+class CategoriaIncidenciaSerializer(serializers.ModelSerializer):
+    area_nombre = serializers.StringRelatedField(source='area', read_only=True)
 
     class Meta:
-        model  = Solicitud
-        fields = ['cliente', 'canal', 'sistema', 'descripcion', 'received_at']
-
-    def validate_cliente(self, value):
-        if not value.usuario.is_active:
-            raise serializers.ValidationError('El cliente no está activo.')
-        return value
-
-    def validate_sistema(self, value):
-        if value.estado != 'activo':
-            raise serializers.ValidationError('El sistema no está activo.')
-        return value
+        model = CategoriaIncidencia
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
 
 
-class HistorialTicketSerializer(serializers.ModelSerializer):
-    autor_nombre = serializers.SerializerMethodField()
-
-    class Meta:
-        model  = HistorialTicket
-        fields = ['id', 'tipo_evento', 'descripcion', 'autor', 'autor_nombre', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-    def get_autor_nombre(self, obj):
-        if obj.autor:
-            return f'{obj.autor.nombres} {obj.autor.apellidos}'
-        return 'Sistema'
-
-
+# ---------------------------------------------------------------------------
+# Ticket
+# ---------------------------------------------------------------------------
 class TicketSerializer(serializers.ModelSerializer):
-    historial  = HistorialTicketSerializer(many=True, read_only=True)
-    solicitud  = SolicitudSerializer(read_only=True)
-    area_nombre            = serializers.CharField(source='area.nombre', read_only=True)
-    agente_asignado_nombre = serializers.SerializerMethodField()
-    agente_escalado_nombre = serializers.SerializerMethodField()
+    # Relaciones de escritura mediante IDs
+    cliente = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all())
+    canal   = serializers.PrimaryKeyRelatedField(queryset=CanalEntrada.objects.all())
+    sistema = serializers.PrimaryKeyRelatedField(queryset=Sistema.objects.all())
+    categoria = serializers.PrimaryKeyRelatedField(queryset=CategoriaIncidencia.objects.all(), allow_null=True, required=False)
+    area = serializers.PrimaryKeyRelatedField(queryset=Area.objects.all(), allow_null=True, required=False)
+    agente_asignado = serializers.PrimaryKeyRelatedField(queryset=Agente.objects.all(), allow_null=True, required=False)
+    agente_escalado = serializers.PrimaryKeyRelatedField(queryset=Agente.objects.all(), allow_null=True, required=False)
+
+    # Campos de solo lectura para visualización
+    cliente_nombre = serializers.StringRelatedField(source='cliente', read_only=True)
+    canal_nombre   = serializers.StringRelatedField(source='canal', read_only=True)
+    sistema_nombre = serializers.StringRelatedField(source='sistema', read_only=True)
+    categoria_nombre = serializers.StringRelatedField(source='categoria', read_only=True)
+    area_nombre = serializers.StringRelatedField(source='area', read_only=True)
+    agente_asignado_nombre = serializers.StringRelatedField(source='agente_asignado', read_only=True)
+    agente_escalado_nombre = serializers.StringRelatedField(source='agente_escalado', read_only=True)
 
     class Meta:
-        model  = Ticket
-        fields = [
-            'id', 'codigo_ticket', 'solicitud',
-            'area', 'area_nombre',
-            'agente_asignado', 'agente_asignado_nombre',
-            'agente_escalado', 'agente_escalado_nombre',
-            'estado', 'prioridad',
-            'motivo_escalamiento',
-            'fecha_primera_respuesta', 'fecha_solucionado', 'fecha_cierre',
-            'chatbot_enviado', 'chatbot_resolvio',
-            'horas_limite_confirmacion', 'comentario_solucion',
-            'created_at', 'updated_at',
-            'historial',
-        ]
+        model = Ticket
+        fields = '__all__'
         read_only_fields = [
-            'id', 'codigo_ticket', 'created_at', 'updated_at',
-            'fecha_primera_respuesta', 'fecha_solucionado', 'fecha_cierre',
+            'codigo_ticket',           # normalmente se genera automáticamente
+            'fecha_asignacion',        # se asigna en el servidor
+            'created_at',
+            'updated_at',
         ]
 
-    def get_agente_asignado_nombre(self, obj):
-        if obj.agente_asignado:
-            u = obj.agente_asignado.usuario
-            return f'{u.nombres} {u.apellidos}'
-        return None
+    def validate(self, data):
+        # Validación de escalamiento (cláusula CHECK)
+        if data.get('agente_escalado') and not data.get('motivo_escalamiento'):
+            raise serializers.ValidationError(
+                'Debe indicar el motivo de escalamiento cuando se asigna un agente escalado.'
+            )
+        return data
 
-    def get_agente_escalado_nombre(self, obj):
-        if obj.agente_escalado:
-            u = obj.agente_escalado.usuario
-            return f'{u.nombres} {u.apellidos}'
-        return None
+    def create(self, validated_data):
+        # Si al crear ya viene un agente asignado, establecemos fecha_asignacion
+        if validated_data.get('agente_asignado') and not validated_data.get('fecha_asignacion'):
+            validated_data['fecha_asignacion'] = timezone.now()
+        return super().create(validated_data)
 
-
-class TicketCreateSerializer(serializers.Serializer):
-    """Crea solicitud + ticket en una sola operación."""
-    canal       = serializers.IntegerField()
-    sistema     = serializers.IntegerField()
-    descripcion = serializers.CharField()
-    prioridad   = serializers.ChoiceField(
-        choices=['bajo', 'medio', 'alto'], default='medio'  # ← actualizado según modelo
-    )
-    received_at = serializers.DateTimeField(required=False, allow_null=True)
-
-    def validate_canal(self, value):
-        from operaciones.models import CanalEntrada
-        try:
-            canal = CanalEntrada.objects.get(pk=value, estado='activo')
-        except CanalEntrada.DoesNotExist:
-            raise serializers.ValidationError('Canal no encontrado o inactivo.')
-        return canal
-
-    def validate_sistema(self, value):
-        from instituciones.models import Sistema
-        try:
-            sistema = Sistema.objects.get(pk=value, estado='activo')
-        except Sistema.DoesNotExist:
-            raise serializers.ValidationError('Sistema no encontrado o inactivo.')
-        return sistema
+    def update(self, instance, validated_data):
+        # Si el agente pasa de NULL a un valor concreto y no hay fecha_asignacion, la establecemos
+        if instance.agente_asignado is None and validated_data.get('agente_asignado') is not None:
+            validated_data['fecha_asignacion'] = timezone.now()
+        return super().update(instance, validated_data)
 
 
-class TicketAsignarSerializer(serializers.Serializer):
-    agente_id = serializers.IntegerField()
-
-    def validate_agente_id(self, value):
-        from usuarios.models import Agente
-        try:
-            agente = Agente.objects.get(pk=value, estado='activo')
-        except Agente.DoesNotExist:
-            raise serializers.ValidationError('Agente no encontrado o inactivo.')
-        return agente
-
-
-class TicketEscalarSerializer(serializers.Serializer):
-    agente_id           = serializers.IntegerField()
-    motivo_escalamiento = serializers.CharField(max_length=200)
-
-    def validate_agente_id(self, value):
-        from usuarios.models import Agente
-        try:
-            agente = Agente.objects.get(pk=value, estado='activo')
-        except Agente.DoesNotExist:
-            raise serializers.ValidationError('Agente no encontrado o inactivo.')
-        return agente
-
-
-class TicketSolucionarSerializer(serializers.Serializer):
-    comentario_solucion = serializers.CharField(max_length=500)
-
-
-class TicketRechazarSerializer(serializers.Serializer):
-    motivo = serializers.CharField(max_length=200)
-
-
-class NotificacionSerializer(serializers.ModelSerializer):
+# ---------------------------------------------------------------------------
+# Adjunto
+# ---------------------------------------------------------------------------
+class AdjuntoSerializer(serializers.ModelSerializer):
+    subido_por_nombre = serializers.StringRelatedField(source='subido_por', read_only=True)
 
     class Meta:
-        model  = Notificacion
-        fields = [
-            'id', 'ticket', 'destinatario', 'tipo_notificacion',
-            'contenido', 'estado', 'sent_at', 'created_at',
-        ]
-        read_only_fields = ['id', 'created_at']
+        model = Adjunto
+        fields = '__all__'
+        read_only_fields = ['uploaded_at']
+
+    def validate_tamanio_bytes(self, value):
+        if value is not None and value > Adjunto.TAMANIO_MAXIMO_BYTES:
+            raise serializers.ValidationError(
+                f'El archivo no puede superar {Adjunto.TAMANIO_MAXIMO_BYTES} bytes (10 MB).'
+            )
+        return value
+
+
+# ---------------------------------------------------------------------------
+# HistorialTicket
+# ---------------------------------------------------------------------------
+class HistorialTicketSerializer(serializers.ModelSerializer):
+    autor_nombre = serializers.StringRelatedField(source='autor', read_only=True)
+
+    class Meta:
+        model = HistorialTicket
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
+# ---------------------------------------------------------------------------
+# Notificación
+# ---------------------------------------------------------------------------
+class NotificacionSerializer(serializers.ModelSerializer):
+    destinatario_nombre = serializers.StringRelatedField(source='destinatario', read_only=True)
+
+    class Meta:
+        model = Notificacion
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
+# ---------------------------------------------------------------------------
+# SatisfacciónTicket
+# ---------------------------------------------------------------------------
+class SatisfaccionTicketSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SatisfaccionTicket
+        fields = '__all__'
+        read_only_fields = ['enviado_en']
+
+    def validate_puntuacion(self, value):
+        if value is not None and not (1 <= value <= 5):
+            raise serializers.ValidationError('La puntuación debe estar entre 1 y 5.')
+        return value
+
+    def validate(self, data):
+        respondido = data.get('respondido_en')
+        enviado = self.instance.enviado_en if self.instance else data.get('enviado_en')
+        if respondido and enviado and respondido < enviado:
+            raise serializers.ValidationError('respondido_en no puede ser anterior a enviado_en.')
+        return data
