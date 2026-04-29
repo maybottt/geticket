@@ -1,133 +1,130 @@
-
-# Create your models here.
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
+# usuarios/models.py
 from django.db import models
-from .managers import UsuarioManager
+from django.contrib.auth.hashers import make_password
+
+from instituciones.models import Institucion
 
 
-class Usuario(AbstractBaseUser, PermissionsMixin):
-    """
-    Cuenta de acceso única. Un usuario = un rol = una institución.
-    Si una persona pertenece a dos instituciones, crea dos cuentas distintas.
-    """
+class Usuario(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO    = 'activo',    'Activo'
+        INACTIVO  = 'inactivo',  'Inactivo'
+        ELIMINADO = 'eliminado', 'Eliminado'
+
     username        = models.CharField(max_length=50, unique=True)
-    email           = models.EmailField(max_length=255, unique=True)
+    email           = models.EmailField(max_length=255)
+    password        = models.CharField(max_length=255)   # hash almacenado
     nro_celular     = models.CharField(max_length=20, null=True, blank=True)
     nro_celular_dos = models.CharField(max_length=20, null=True, blank=True)
     user_telegram   = models.CharField(max_length=50, null=True, blank=True)
     ci              = models.CharField(max_length=20, null=True, blank=True)
     nombres         = models.CharField(max_length=100)
     apellidos       = models.CharField(max_length=100)
-    is_active       = models.BooleanField(default=True)
-    last_login      = models.DateTimeField(auto_now=True)
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
- 
-    objects = UsuarioManager()
- 
-    USERNAME_FIELD  = 'username'
-    REQUIRED_FIELDS = ['email', 'nombres', 'apellidos']
- 
+    estado          = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.ACTIVO
+    )
+    last_login  = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
     class Meta:
         db_table = 'usuario'
         verbose_name = 'Usuario'
         verbose_name_plural = 'Usuarios'
- 
+
     def __str__(self):
-        return f'{self.nombres} {self.apellidos} <{self.email}>'
- 
-    @property
-    def is_staff(self):
-        """Requerido por Django admin. Solo los administradores tienen acceso."""
-        return hasattr(self, 'administrador') and self.administrador.estado == 'activo'
- 
-    @property
-    def rol(self):
-        """Devuelve el rol de esta cuenta, o None si aún no tiene perfil asignado."""
-        if hasattr(self, 'administrador'):
-            return 'administrador'
-        if hasattr(self, 'agente'):
-            return 'agente'
-        if hasattr(self, 'cliente'):
-            return 'cliente'
-        return None
- 
- 
-class Agente(models.Model):
- 
-    ESTADO_CHOICES = [
-        ('activo',    'Activo'),
-        ('inactivo',  'Inactivo'),
-        ('eliminado', 'Eliminado'),
-    ]
- 
-    usuario    = models.OneToOneField(
-        Usuario, on_delete=models.PROTECT,
-        db_column='id_usuario', related_name='agente'
+        return f'{self.username} ({self.nombres} {self.apellidos})'
+
+    def set_password(self, raw_password: str) -> None:
+        self.password = make_password(raw_password)
+
+
+class Cliente(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO    = 'activo',    'Activo'
+        INACTIVO  = 'inactivo',  'Inactivo'
+        ELIMINADO = 'eliminado', 'Eliminado'
+
+    usuario = models.OneToOneField(
+        Usuario,
+        on_delete=models.PROTECT,
+        related_name='perfil_cliente',
+        db_column='id_usuario',
     )
-    estado     = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='activo')
+    institucion = models.ForeignKey(
+        Institucion,
+        on_delete=models.PROTECT,
+        related_name='clientes',
+        db_column='id_institucion',
+    )
+    rol_institucion = models.CharField(max_length=50)
+    estado          = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.ACTIVO
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
- 
-    class Meta:
-        db_table = 'agente'
-        verbose_name = 'Agente'
-        verbose_name_plural = 'Agentes'
- 
-    def __str__(self):
-        return str(self.usuario)
- 
- 
-class Cliente(models.Model):
- 
-    ESTADO_CHOICES = [
-        ('activo',    'Activo'),
-        ('inactivo',  'Inactivo'),
-        ('eliminado', 'Eliminado'),
-    ]
- 
-    usuario         = models.OneToOneField(
-        Usuario, on_delete=models.PROTECT,
-        db_column='id_usuario', related_name='cliente'
-    )
-    institucion     = models.ForeignKey(
-        'instituciones.Institucion', on_delete=models.PROTECT,
-        db_column='id_institucion', related_name='clientes'
-    )
-    rol_institucion = models.CharField(max_length=50, blank=True)
-    estado          = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='activo')
-    created_at      = models.DateTimeField(auto_now_add=True)
-    updated_at      = models.DateTimeField(auto_now=True)
- 
+
     class Meta:
         db_table = 'cliente'
         verbose_name = 'Cliente'
         verbose_name_plural = 'Clientes'
- 
+        indexes = [
+            models.Index(fields=['institucion'], name='idx_cliente_id_institucion'),
+        ]
+
     def __str__(self):
-        return str(self.usuario)
- 
- 
-class Administrador(models.Model):
- 
-    ESTADO_CHOICES = [
-        ('activo',    'Activo'),
-        ('inactivo',  'Inactivo'),
-        ('eliminado', 'Eliminado'),
-    ]
- 
-    usuario    = models.OneToOneField(
-        Usuario, on_delete=models.PROTECT,
-        db_column='id_usuario', related_name='administrador'
+        return f'Cliente: {self.usuario.username}'
+
+
+class Agente(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO    = 'activo',    'Activo'
+        INACTIVO  = 'inactivo',  'Inactivo'
+        ELIMINADO = 'eliminado', 'Eliminado'
+
+    usuario = models.OneToOneField(
+        Usuario,
+        on_delete=models.PROTECT,
+        related_name='perfil_agente',
+        db_column='id_usuario',
     )
-    estado     = models.CharField(max_length=15, choices=ESTADO_CHOICES, default='activo')
+    estado = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.ACTIVO
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
- 
+
+    class Meta:
+        db_table = 'agente'
+        verbose_name = 'Agente'
+        verbose_name_plural = 'Agentes'
+
+    def __str__(self):
+        return f'Agente: {self.usuario.username}'
+
+
+class Administrador(models.Model):
+    class Estado(models.TextChoices):
+        ACTIVO    = 'activo',    'Activo'
+        INACTIVO  = 'inactivo',  'Inactivo'
+        ELIMINADO = 'eliminado', 'Eliminado'
+
+    usuario = models.OneToOneField(
+        Usuario,
+        on_delete=models.PROTECT,
+        related_name='perfil_admin',
+        db_column='id_usuario',
+    )
+    estado = models.CharField(
+        max_length=15, choices=Estado.choices, default=Estado.ACTIVO
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         db_table = 'administrador'
         verbose_name = 'Administrador'
         verbose_name_plural = 'Administradores'
- 
+
     def __str__(self):
-        return str(self.usuario)
+        return f'Admin: {self.usuario.username}'
