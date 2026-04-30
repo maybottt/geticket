@@ -2,15 +2,16 @@
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password as django_check_password
 from django.core.exceptions import ValidationError
+from django.contrib.auth.models import BaseUserManager
+from django.apps import apps
 
 from instituciones.models import Institucion
 
-
-class UsuarioManager(models.Manager):
+class UsuarioManager(BaseUserManager):
     def create_user(self, username, email, nombres, apellidos, password=None, **extra_fields):
         if not email:
             raise ValueError('El email es obligatorio')
-        email = self.normalize_email(email)
+        email = BaseUserManager.normalize_email(email)
         user = self.model(
             username=username,
             email=email,
@@ -24,12 +25,11 @@ class UsuarioManager(models.Manager):
         return user
 
     def create_superuser(self, username, email, nombres, apellidos, password=None, **extra_fields):
-        """Crea usuario con perfil Administrador; usado por comandos internos."""
         user = self.create_user(username, email, nombres, apellidos, password, **extra_fields)
-        from .models import Administrador
+        # Evita import circular usando apps.get_model
+        Administrador = apps.get_model('usuarios', 'Administrador')
         Administrador.objects.get_or_create(usuario=user, defaults={'estado': 'activo'})
         return user
-
 
 class Usuario(models.Model):
     class Estado(models.TextChoices):
@@ -55,6 +55,9 @@ class Usuario(models.Model):
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
 
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email', 'nombres', 'apellidos', 'nro_celular']
+   
     objects = UsuarioManager()
 
     # Propiedades y métodos necesarios para Django y SimpleJWT

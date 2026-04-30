@@ -327,7 +327,7 @@ class Notificacion(models.Model):
         verbose_name_plural = 'Notificaciones'
         indexes = [
             models.Index(fields=['ticket'],       name='idx_notificacion_id_ticket'),
-            models.Index(fields=['destinatario'], name='idx_notificacion_id_destinatario'),
+            models.Index(fields=['destinatario'], name='idx_notif_destinatario'),
             models.Index(fields=['estado'],       name='idx_notificacion_estado'),
         ]
 
