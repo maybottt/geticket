@@ -9,15 +9,11 @@ class InstitucionSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
 
-
 class SistemaSerializer(serializers.ModelSerializer):
-    institucion_nombre = serializers.StringRelatedField(source='institucion', read_only=True)
-
     class Meta:
         model = Sistema
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
-
 
 class InstitucionSistemaSerializer(serializers.ModelSerializer):
     class Meta:

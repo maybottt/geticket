@@ -43,16 +43,10 @@ class Sistema(models.Model):
         INACTIVO  = 'inactivo',  'Inactivo'
         ELIMINADO = 'eliminado', 'Eliminado'
 
-    institucion = models.ForeignKey(
-        Institucion,
-        on_delete=models.PROTECT,
-        related_name='sistemas',
-        db_column='id_institucion',
-    )
     nombre  = models.CharField(max_length=255)
     version = models.CharField(max_length=50, null=True, blank=True)
     estado  = models.CharField(
-        max_length=20, choices=Estado.choices, default=Estado.ACTIVO
+        max_length=20, choices=Estado.choices, default=Estado.ACTIVO,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -64,7 +58,6 @@ class Sistema(models.Model):
 
     def __str__(self):
         return f'{self.nombre} ({self.version or "s/v"})'
-
 
 class InstitucionSistema(models.Model):
     institucion = models.ForeignKey(
