@@ -1,5 +1,5 @@
 # usuarios/models.py
-from django.db import models
+from django.db import modelsc
 from django.contrib.auth.hashers import make_password, check_password as django_check_password
 from django.core.exceptions import ValidationError
 from django.contrib.auth.models import BaseUserManager
@@ -94,6 +94,24 @@ class Usuario(models.Model):
         """Hashea y guarda la contraseña."""
         self.password = make_password(raw_password)
 
+    def save(self, *args, **kwargs):
+        # Si el usuario pasa a inactivo o eliminado, desactivar todos los roles
+        if self.pk:  # solo en actualizaciones
+            old = Usuario.objects.get(pk=self.pk)
+            if old.estado in [self.Estado.ACTIVO, self.Estado.INACTIVO] and \
+               self.estado in [self.Estado.INACTIVO, self.Estado.ELIMINADO]:
+                # se está desactivando/eliminando → desactivar roles
+                # (lo haremos después de guardar, en post_save o con bandera)
+                # Usamos un atributo temporal para evitar recursividad
+                self._deactivate_roles = True
+        super().save(*args, **kwargs)
+
+        # Después de guardar, si se marcó, desactivamos los roles
+        if getattr(self, '_deactivate_roles', False):
+            self._deactivate_roles = False
+            _deactivate_user_roles(self)
+
+
 
 class Cliente(models.Model):
     class Estado(models.TextChoices):
@@ -132,6 +150,16 @@ class Cliente(models.Model):
 
     def __str__(self):
         return f'Cliente: {self.usuario.username}'
+    
+    def save(self, *args, **kwargs):
+        if self.pk:  # actualización
+            old = Cliente.objects.get(pk=self.pk)
+            if old.estado != self.estado:
+                if self.estado == self.Estado.ACTIVO:
+                    _set_user_active(self.usuario)
+        elif self.estado == self.Estado.ACTIVO:  # creación directa como activo
+            _set_user_active(self.usuario)
+        super().save(*args, **kwargs)
 
 
 class Agente(models.Model):
@@ -161,6 +189,16 @@ class Agente(models.Model):
 
     def __str__(self):
         return f'Agente: {self.usuario.username}'
+    
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = Agente.objects.get(pk=self.pk)
+            if old.estado != self.estado:
+                if self.estado == self.Estado.ACTIVO:
+                    _set_user_active(self.usuario)
+        elif self.estado == self.Estado.ACTIVO:
+            _set_user_active(self.usuario)
+        super().save(*args, **kwargs)
 
 
 class Administrador(models.Model):
@@ -189,4 +227,28 @@ class Administrador(models.Model):
         verbose_name_plural = 'Administradores'
 
     def __str__(self):
-        return f'Admin: {self.usuario.username}'
+        return f'Admin: {self.usuario.username}' 
+    
+    def save(self, *args, **kwargs):
+        if self.pk:
+            old = Administrador.objects.get(pk=self.pk)
+            if old.estado != self.estado:
+                if self.estado == self.Estado.ACTIVO:
+                    _set_user_active(self.usuario)
+        elif self.estado == self.Estado.ACTIVO:
+            _set_user_active(self.usuario)
+        super().save(*args, **kwargs)
+    
+def _set_user_active(user):
+    """Activa el usuario si no está eliminado."""
+    if user.estado != Usuario.Estado.ACTIVO and user.estado != Usuario.Estado.ELIMINADO:
+        user.estado = Usuario.Estado.ACTIVO
+        user.save(update_fields=['estado', 'updated_at'])
+
+def _deactivate_user_roles(user):
+    """Desactiva todos los perfiles asociados a un usuario."""
+    for attr in ['perfil_cliente', 'perfil_agente', 'perfil_admin']:
+        perfil = getattr(user, attr, None)
+        if perfil and perfil.estado != perfil.Estado.ELIMINADO:
+            perfil.estado = perfil.Estado.INACTIVO
+            perfil.save(update_fields=['estado', 'updated_at'])

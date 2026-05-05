@@ -24,4 +24,5 @@ urlpatterns = [
     path('auth/registro-cliente/', RegistroClienteView.as_view(), name='registro-cliente'),
     path('perfil/', MiPerfilView.as_view(), name='mi-perfil'),
     path('', include(router.urls)),
+    path('auth/registro-usuario/', RegistroSoloUsuarioView.as_view(), name='registro-usuario'),
 ]

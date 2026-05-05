@@ -151,3 +151,8 @@ class AdministradorViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return AdministradorCreateSerializer
         return AdministradorSerializer
+    
+class RegistroSoloUsuarioView(generics.CreateAPIView):
+    authentication_classes = []
+    permission_classes = []
+    serializer_class = RegistroSoloUsuarioSerializer

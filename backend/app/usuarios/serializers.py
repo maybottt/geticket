@@ -227,3 +227,34 @@ class AdministradorCreateSerializer(RegistroUsuarioBaseSerializer):
         user.save()
 
         return Administrador.objects.create(usuario=user, estado=estado)
+
+# ──────────────────────────────────────────
+# Otros 
+# ──────────────────────────────────────────   
+class RegistroSoloUsuarioSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=50)
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
+    nombres = serializers.CharField(max_length=100)
+    apellidos = serializers.CharField(max_length=100)
+    nro_celular = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    nro_celular_dos = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    user_telegram = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    ci = serializers.CharField(max_length=20, required=False, allow_blank=True)
+
+    # def validate_email(self, value):
+    #     if Usuario.objects.filter(email=value).exists():
+    #         raise serializers.ValidationError('Ya existe un usuario con este email.')
+    #     return value
+
+    def validate_username(self, value):
+        if Usuario.objects.filter(username=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este username.')
+        return value
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = Usuario(**validated_data, estado='inactivo')
+        user.set_password(password)
+        user.save()
+        return user
